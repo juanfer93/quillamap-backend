@@ -2,11 +2,17 @@ import { Column, Entity, PrimaryColumn } from 'typeorm';
 
 @Entity()
 export class Profile {
-  @PrimaryColumn()
+  @PrimaryColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ nullable: true })
   full_name: string;
+
+  @Column()
+  email: string;
+
+  @Column({ default: 0 })
+  karma: number;
 
   @Column()
   vehicle_type: string;
