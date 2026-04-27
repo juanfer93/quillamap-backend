@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, OneToMany, PrimaryColumn } from 'typeorm';
+import { Report } from '@/features/reports/entities/report.entity';
 
 @Entity()
 export class Profile {
@@ -25,4 +26,7 @@ export class Profile {
 
   @Column({ type: 'geography', spatialFeatureType: 'Point', srid: 4326, nullable: true })
   last_location?: string;
+
+  @OneToMany(() => Report, (report) => report.profile)
+  reports: Report[];
 }

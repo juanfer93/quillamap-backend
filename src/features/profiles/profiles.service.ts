@@ -25,4 +25,12 @@ export class ProfilesService {
 
     return profile;
   }
+
+  async incrementKarma(profileId: string, points: number): Promise<void> {
+    const profile = await this.profileRepository.findOne({ where: { id: profileId } });
+    if (profile) {
+      profile.karma += points;
+      await this.profileRepository.save(profile);
+    }
+  }
 }
