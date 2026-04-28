@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Profile } from '@/features/profiles/entities/profile.entity';
+import { VehicleType } from './entities/vehicle_type.enum';
 
 @Injectable()
 export class ProfilesService {
@@ -18,7 +19,7 @@ export class ProfilesService {
         id: userId,
         email,
         karma: 0,
-        vehicle_type: 'Carro',
+        vehicle_type: VehicleType.CARRO_PARTICULAR,
       });
       await this.profileRepository.save(profile);
     }

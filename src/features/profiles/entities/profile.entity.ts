@@ -1,6 +1,7 @@
 import { Column, Entity, OneToMany, PrimaryColumn } from 'typeorm';
 import { Report } from '@/features/reports/entities/report.entity';
 import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
+import { VehicleType } from './vehicle_type.enum';
 
 @Entity()
 export class Profile {
@@ -16,8 +17,12 @@ export class Profile {
   @Column({ default: 0 })
   karma: number;
 
-  @Column()
-  vehicle_type: string;
+  @Column({
+    type: 'enum',
+    enum: VehicleType,
+    default: VehicleType.CARRO_PARTICULAR,
+  })
+  vehicle_type: VehicleType;
 
   @Column({ nullable: true })
   plate_number?: string;
