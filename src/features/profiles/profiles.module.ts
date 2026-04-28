@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Profile } from '@/features/profiles/entities/profile.entity';
@@ -9,5 +8,6 @@ import { ProfilesService } from '@/features/profiles/profiles.service';
   imports: [TypeOrmModule.forFeature([Profile])],
   controllers: [ProfilesController],
   providers: [ProfilesService],
+  exports: [ProfilesService],
 })
 export class ProfilesModule {}
