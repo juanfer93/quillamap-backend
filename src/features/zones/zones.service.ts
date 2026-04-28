@@ -5,6 +5,7 @@ import { Zone } from '@/features/zones/entities/zone.entity';
 import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
 import { RestrictionType } from '@/features/zones/enums/restriction-type.enum';
 import { DayOfWeek } from '@/features/zones/interfaces/zone-rules.interface';
+import { RadarQueryDto } from '@/features/zones/dto/radar-query.dto';
 
 @Injectable()
 export class ZonesService {
@@ -28,7 +29,34 @@ export class ZonesService {
     return zone;
   }
 
- 
+  async getNearbyRestrictions(dto: RadarQueryDto): Promise<Zone[]> {
+    const { lat, lng, vehicleType, plate } = dto;
+
+    const nearbyZones = await this.zoneRepository.query(
+      `
+      SELECT * FROM zones
+      WHERE "active" = true AND ST_DWithin(boundary::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 500);
+      `,
+      [lng, lat],
+    );
+
+    const restrictedZones: Zone[] = [];
+
+    for (const zone of nearbyZones) {
+      const { restricted } = await this.isRestricted(zone.id, {
+        type: vehicleType,
+        plate,
+        dateTime: new Date(),
+      });
+
+      if (restricted) {
+        restrictedZones.push(zone);
+      }
+    }
+
+    return restrictedZones;
+  }
+
   async isRestricted(
     zoneId: string, 
     vehicleData: { type: VehicleType; plate: string; dateTime: Date }

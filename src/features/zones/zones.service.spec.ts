@@ -1,13 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ZonesService } from './zones.service';
+import { ZonesService } from '@/features/zones/zones.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Zone } from './entities/zone.entity';
+import { Zone } from '@/features/zones/entities/zone.entity';
 import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
-import { RestrictionType } from './enums/restriction-type.enum';
-import { DayOfWeek } from './interfaces/zone-rules.interface';
+import { RestrictionType } from '@/features/zones/enums/restriction-type.enum';
+import { DayOfWeek } from '@/features/zones/interfaces/zone-rules.interface';
 import { Polygon } from 'geojson';
+import { RadarQueryDto } from '@/features/zones/dto/radar-query.dto';
 
-describe('ZonesService - Restriction Logic', () => {
+describe('ZonesService', () => {
   let service: ZonesService;
 
   const mockBoundary: Polygon = {
@@ -19,9 +20,9 @@ describe('ZonesService - Restriction Logic', () => {
     id: 'zone-123',
     name: 'Soledad - Motos',
     active: true,
-    boundary: mockBoundary, // Ya no es null
+    boundary: mockBoundary,
     rules: {
-      metadata: [ // Estructura correcta que coincide con ZoneRulesMetadata
+      metadata: [
         {
           type: RestrictionType.PICO_Y_PLACA,
           vehicleType: VehicleType.MOTO,
@@ -36,15 +37,18 @@ describe('ZonesService - Restriction Logic', () => {
     updatedAt: new Date(),
   };
 
+  const mockZoneRepository = {
+    findOne: jest.fn().mockResolvedValue(mockZone),
+    query: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ZonesService,
         {
           provide: getRepositoryToken(Zone),
-          useValue: {
-            findOne: jest.fn().mockResolvedValue(mockZone),
-          },
+          useValue: mockZoneRepository,
         },
       ],
     }).compile();
@@ -52,20 +56,71 @@ describe('ZonesService - Restriction Logic', () => {
     service = module.get<ZonesService>(ZonesService);
   });
 
-  it('debe estar definido', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
-  it('debe restringir una moto con placa terminada en 1 un lunes en Soledad', async () => {
-    // '2026-04-27' es Lunes
-    const mondayMorning = new Date('2026-04-27T10:00:00'); 
-    const result = await service.isRestricted('zone-123', {
-      type: VehicleType.MOTO,
+  describe('isRestricted', () => {
+    it('should restrict a motorcycle with plate ending in 1 on a Monday in Soledad', async () => {
+      const mondayMorning = new Date('2026-04-27T10:00:00');
+      const result = await service.isRestricted('zone-123', {
+        type: VehicleType.MOTO,
+        plate: 'ABC-121',
+        dateTime: mondayMorning
+      });
+
+      expect(result.restricted).toBe(true);
+      expect(result.reason).toBe(RestrictionType.PICO_Y_PLACA);
+    });
+  });
+
+  describe('getNearbyRestrictions', () => {
+    const radarQuery: RadarQueryDto = {
+      lat: 10.987,
+      lng: -74.789,
+      vehicleType: VehicleType.MOTO,
       plate: 'ABC-121',
-      dateTime: mondayMorning
+    };
+
+    it('should return a restricted zone when a nearby zone is found and the vehicle is restricted', async () => {
+      mockZoneRepository.query.mockResolvedValue([mockZone]);
+      const isRestrictedSpy = jest.spyOn(service, 'isRestricted').mockResolvedValue({ restricted: true, reason: RestrictionType.PICO_Y_PLACA });
+
+      const result = await service.getNearbyRestrictions(radarQuery);
+
+      expect(result).toEqual([mockZone]);
+      expect(mockZoneRepository.query).toHaveBeenCalled();
+      expect(isRestrictedSpy).toHaveBeenCalledWith(mockZone.id, {
+        type: radarQuery.vehicleType,
+        plate: radarQuery.plate,
+        dateTime: expect.any(Date),
+      });
     });
 
-    expect(result.restricted).toBe(true);
-    expect(result.reason).toBe(RestrictionType.PICO_Y_PLACA);
+    it('should return an empty array when a nearby zone is found but the vehicle is not restricted', async () => {
+      mockZoneRepository.query.mockResolvedValue([mockZone]);
+      const isRestrictedSpy = jest.spyOn(service, 'isRestricted').mockResolvedValue({ restricted: false, reason: null });
+
+      const result = await service.getNearbyRestrictions({ ...radarQuery, vehicleType: VehicleType.PEATON });
+
+      expect(result).toEqual([]);
+      expect(mockZoneRepository.query).toHaveBeenCalled();
+      expect(isRestrictedSpy).toHaveBeenCalled();
+    });
+
+    it('should return an empty array when no nearby zones are found', async () => {
+      mockZoneRepository.query.mockResolvedValue([]);
+      const isRestrictedSpy = jest.spyOn(service, 'isRestricted');
+
+      const result = await service.getNearbyRestrictions(radarQuery);
+
+      expect(result).toEqual([]);
+      expect(mockZoneRepository.query).toHaveBeenCalled();
+      expect(isRestrictedSpy).not.toHaveBeenCalled();
+    });
   });
 });
