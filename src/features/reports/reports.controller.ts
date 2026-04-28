@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ReportsService } from '@/features/reports/reports.service';
 import { CreateReportDto } from '@/features/reports/dto/create-report.dto';
 import { SupabaseAuthGuard } from '@/features/auth/guards/supabase-auth.guard';
@@ -22,5 +30,15 @@ export class ReportsController {
     @CurrentUser() user: SupabaseJwtPayload,
   ) {
     return this.reportsService.createReport(createReportDto, user.sub);
+  }
+
+  @Post(':id/validate')
+  @UseGuards(SupabaseAuthGuard)
+  validateReport(
+    @Param('id') id: string,
+    @Body('isConfirmed') isConfirmed: boolean,
+    @CurrentUser() user: SupabaseJwtPayload,
+  ) {
+    return this.reportsService.validateReport(id, user.sub, isConfirmed);
   }
 }

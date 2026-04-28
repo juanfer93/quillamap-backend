@@ -1,5 +1,6 @@
 import { Column, Entity, OneToMany, PrimaryColumn } from 'typeorm';
 import { Report } from '@/features/reports/entities/report.entity';
+import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
 
 @Entity()
 export class Profile {
@@ -29,4 +30,7 @@ export class Profile {
 
   @OneToMany(() => Report, (report) => report.profile)
   reports: Report[];
+
+  @OneToMany(() => ReportValidation, (validation) => validation.profile)
+  validations: ReportValidation[];
 }

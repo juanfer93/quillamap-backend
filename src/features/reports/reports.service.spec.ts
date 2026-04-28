@@ -9,16 +9,26 @@ import { CreateReportDto } from '@/features/reports/dto/create-report.dto';
 import { ReportType } from '@/features/reports/entities/report-type.enum';
 import { ReportStatus } from '@/features/reports/entities/report-status.enum';
 import { GetReportsFilterDto } from '@/features/reports/dto/get-reports-filter.dto';
+import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
+import { ForbiddenException } from '@nestjs/common';
 
 describe('ReportsService', () => {
   let service: ReportsService;
-  let repository: Repository<Report>;
+  let reportRepository: Repository<Report>;
+  let reportValidationRepository: Repository<ReportValidation>;
   let profilesService: ProfilesService;
 
   const mockReportRepository = {
     create: jest.fn(),
     save: jest.fn(),
     createQueryBuilder: jest.fn(),
+    findOneOrFail: jest.fn(),
+  };
+
+  const mockReportValidationRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    count: jest.fn(),
   };
 
   const mockProfilesService = {
@@ -34,6 +44,10 @@ describe('ReportsService', () => {
           useValue: mockReportRepository,
         },
         {
+          provide: getRepositoryToken(ReportValidation),
+          useValue: mockReportValidationRepository,
+        },
+        {
           provide: ProfilesService,
           useValue: mockProfilesService,
         },
@@ -41,7 +55,10 @@ describe('ReportsService', () => {
     }).compile();
 
     service = module.get<ReportsService>(ReportsService);
-    repository = module.get<Repository<Report>>(getRepositoryToken(Report));
+    reportRepository = module.get<Repository<Report>>(getRepositoryToken(Report));
+    reportValidationRepository = module.get<Repository<ReportValidation>>(
+      getRepositoryToken(ReportValidation),
+    );
     profilesService = module.get<ProfilesService>(ProfilesService);
   });
 
@@ -111,6 +128,24 @@ describe('ReportsService', () => {
       );
       expect(queryBuilder.orderBy).toHaveBeenCalledWith('report.createdAt', 'DESC');
       expect(queryBuilder.getMany).toHaveBeenCalled();
+    });
+  });
+
+  describe('validateReport', () => {
+    it('should throw a ForbiddenException if a user tries to validate their own report', async () => {
+      const reportId = 'report-123';
+      const profileId = 'user-123';
+
+      const report = {
+        id: reportId,
+        profileId: profileId,
+      } as Report;
+
+      mockReportRepository.findOneOrFail.mockResolvedValue(report);
+
+      await expect(service.validateReport(reportId, profileId, true)).rejects.toThrow(
+        new ForbiddenException('Users cannot validate their own reports.'),
+      );
     });
   });
 });

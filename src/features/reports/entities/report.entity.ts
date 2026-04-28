@@ -4,12 +4,14 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { ReportType } from '@/features/reports/entities/report-type.enum';
 import { ReportStatus } from '@/features/reports/entities/report-status.enum';
 import { Profile } from '@/features/profiles/entities/profile.entity';
 import type { Point } from 'geojson';
+import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
 
 @Entity()
 export class Report {
@@ -48,4 +50,7 @@ export class Report {
 
   @Column()
   profileId: string;
+
+  @OneToMany(() => ReportValidation, (validation) => validation.report)
+  validations: ReportValidation[];
 }
