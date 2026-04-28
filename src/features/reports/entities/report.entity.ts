@@ -20,14 +20,14 @@ export class Report {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ApiProperty({ description: 'Type of the report', enum: ReportType, example: ReportType.PICO_Y_PLACA })
+  @ApiProperty({ description: 'Type of the report', enum: ReportType, example: ReportType.ARROYO }) // <-- CORREGIDO: Enum válido
   @Column({
     type: 'enum',
     enum: ReportType,
   })
   type: ReportType;
 
-  @ApiProperty({ description: 'Description of the report', example: 'Retén en la entrada de la ciudad' })
+  @ApiProperty({ description: 'Description of the report', example: 'Arroyo en la calle 84' })
   @Column('text')
   description: string;
 
@@ -35,7 +35,7 @@ export class Report {
   @Column({
     type: 'geometry',
     spatialFeatureType: 'Point',
-    srid: 4321,
+    srid: 4321, 
   })
   location: Point;
 

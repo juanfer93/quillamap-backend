@@ -7,14 +7,14 @@ export class CreateReportDto {
   @ApiProperty({
     description: 'Type of the report',
     enum: ReportType,
-    example: ReportType.RETEN,
+    example: ReportType.ARROYO, 
   })
   @IsEnum(ReportType)
   type: ReportType;
 
   @ApiProperty({
     description: 'Description of the report',
-    example: 'Retén en la entrada de la ciudad',
+    example: 'Arroyo peligroso en la vía',
   })
   @IsString()
   description: string;
@@ -22,7 +22,7 @@ export class CreateReportDto {
   @ApiProperty({
     description: 'GeoJSON Point for the report location',
     example: { type: 'Point', coordinates: [-74.79, 10.99] },
-    type: 'object',
+    type: Object, 
   })
   location: Point;
 }

@@ -9,12 +9,12 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 export class GetReportsFilterDto {
-  @ApiProperty({ description: 'User''s current latitude', example: 10.987 })
+  @ApiProperty({ description: "User's current latitude", example: 10.987 }) 
   @IsLatitude()
   @Type(() => Number)
   lat: number;
 
-  @ApiProperty({ description: 'User''s current longitude', example: -74.789 })
+  @ApiProperty({ description: "User's current longitude", example: -74.789 }) 
   @IsLongitude()
   @Type(() => Number)
   lng: number;
