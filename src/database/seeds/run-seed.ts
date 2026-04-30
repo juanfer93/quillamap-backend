@@ -1,7 +1,7 @@
 
 import 'dotenv/config';
 import { DataSource, DataSourceOptions } from 'typeorm';
-import { seedZones } from './zone.seed';
+import { seedZones } from '@/database/seeds/zone.seed';
 import { Zone } from '@/features/zones/entities/zone.entity';
 
 const AppDataSource = new DataSource({
@@ -22,4 +22,6 @@ const runSeed = async () => {
   console.log('Data Source has been destroyed!');
 };
 
-runSeed().catch((error) => console.error('Error running seed:', error));
+runSeed().catch((error) => {
+  console.error('Error running seed:', error);
+});

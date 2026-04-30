@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Profile } from '@/features/profiles/entities/profile.entity';
-import { VehicleType } from './entities/vehicle_type.enum';
+import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
 
 @Injectable()
 export class ProfilesService {
