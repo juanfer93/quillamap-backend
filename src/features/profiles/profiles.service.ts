@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Profile } from '@/features/profiles/entities/profile.entity';
-import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
+import { CreateProfileDto } from './dto/create-profile.dto';
 
 @Injectable()
 export class ProfilesService {
@@ -19,12 +19,24 @@ export class ProfilesService {
         id: userId,
         email,
         karma: 0,
-        vehicle_type: VehicleType.CARRO_PARTICULAR,
       });
       await this.profileRepository.save(profile);
     }
 
     return profile;
+  }
+
+  async updateProfile(
+    userId: string,
+    createProfileDto: CreateProfileDto,
+  ): Promise<Profile> {
+    const profile = await this.getOrCreateProfile(userId, 'test@test.com');
+
+    profile.mobility_mode = createProfileDto.mobility_mode;
+    profile.vehicle_type = createProfileDto.vehicle_type;
+    profile.license_plate = createProfileDto.license_plate;
+
+    return this.profileRepository.save(profile);
   }
 
   async incrementKarma(profileId: string, points: number): Promise<void> {

@@ -2,6 +2,7 @@ import { Column, Entity, OneToMany, PrimaryColumn } from 'typeorm';
 import { Report } from '@/features/reports/entities/report.entity';
 import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
 import { VehicleType } from './vehicle_type.enum';
+import { MobilityMode } from './mobility_mode.enum';
 
 @Entity()
 export class Profile {
@@ -19,16 +20,20 @@ export class Profile {
 
   @Column({
     type: 'enum',
+    enum: MobilityMode,
+    nullable: true,
+  })
+  mobility_mode: MobilityMode;
+
+  @Column({
+    type: 'enum',
     enum: VehicleType,
-    default: VehicleType.CARRO_PARTICULAR,
+    nullable: true,
   })
   vehicle_type: VehicleType;
 
   @Column({ nullable: true })
-  plate_number?: string;
-
-  @Column({ default: false })
-  is_vehicle_owner: boolean;
+  license_plate?: string;
 
   @Column({ type: 'geography', spatialFeatureType: 'Point', srid: 4326, nullable: true })
   last_location?: string;
