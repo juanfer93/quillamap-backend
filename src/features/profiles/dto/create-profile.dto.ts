@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString, ValidateIf } from 'class-validator';
-import { MobilityMode } from '../entities/mobility_mode.enum';
-import { VehicleType } from '../entities/vehicle_type.enum';
+import { MobilityMode } from '@/features/profiles/entities/mobility_mode.enum';
+import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
 
 export class CreateProfileDto {
   @ApiProperty({ enum: MobilityMode })
