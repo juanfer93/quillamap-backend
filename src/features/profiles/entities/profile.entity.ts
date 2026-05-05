@@ -1,8 +1,8 @@
 import { Column, Entity, OneToMany, PrimaryColumn } from 'typeorm';
 import { Report } from '@/features/reports/entities/report.entity';
 import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
-import { VehicleType } from './vehicle_type.enum';
-import { MobilityMode } from './mobility_mode.enum';
+import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
+import { MobilityMode } from '@/features/profiles/entities/mobility_mode.enum';
 
 @Entity()
 export class Profile {
@@ -23,14 +23,14 @@ export class Profile {
     enum: MobilityMode,
     nullable: true,
   })
-  mobility_mode: MobilityMode;
+  mobility_mode: MobilityMode | null;
 
   @Column({
     type: 'enum',
     enum: VehicleType,
     nullable: true,
   })
-  vehicle_type: VehicleType;
+  vehicle_type: VehicleType | null;
 
   @Column({ nullable: true })
   license_plate?: string;

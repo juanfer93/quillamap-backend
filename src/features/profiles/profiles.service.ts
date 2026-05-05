@@ -33,7 +33,7 @@ export class ProfilesService {
     const profile = await this.getOrCreateProfile(userId, 'test@test.com');
 
     profile.mobility_mode = createProfileDto.mobility_mode;
-    profile.vehicle_type = createProfileDto.vehicle_type;
+    profile.vehicle_type = createProfileDto.vehicle_type ?? null;
     profile.license_plate = createProfileDto.license_plate;
 
     return this.profileRepository.save(profile);

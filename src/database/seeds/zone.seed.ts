@@ -16,7 +16,7 @@ export const seedZones = async (dataSource: DataSource): Promise<void> => {
         metadata: [
           {
             type: RestrictionType.ZONA_PROHIBIDA,
-            vehicleType: VehicleType.MOTO,
+            vehicleType: VehicleType.MOTORCYCLE,
             startTime: '00:00',
             endTime: '23:59',
             days: [DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY],
@@ -37,7 +37,7 @@ export const seedZones = async (dataSource: DataSource): Promise<void> => {
         metadata: [
           {
             type: RestrictionType.ZONA_PROHIBIDA,
-            vehicleType: VehicleType.MOTO,
+            vehicleType: VehicleType.MOTORCYCLE,
             startTime: '00:00',
             endTime: '23:59',
             days: [DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY],
@@ -58,7 +58,7 @@ export const seedZones = async (dataSource: DataSource): Promise<void> => {
         metadata: [
           {
             type: RestrictionType.PARRILLERO_HOMBRE,
-            vehicleType: VehicleType.MOTO,
+            vehicleType: VehicleType.MOTORCYCLE,
             startTime: '00:00',
             endTime: '23:59',
             days: [DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY],
