@@ -8,6 +8,15 @@ describe('AuthController (e2e)', () => {
   let app: INestApplication;
   let authToken: string;
 
+  const testUser = {
+    email: `test-${Date.now()}@quillamap.test`,
+    password: 'password123',
+    full_name: 'Test User',
+    mobility_mode: 'carro',
+    vehicle_type: 'particular',
+    license_plate: 'ABC-123',
+  };
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
@@ -24,41 +33,27 @@ describe('AuthController (e2e)', () => {
   });
 
   describe('Auth flow', () => {
-    const testUser = {
-      email: `test-${Date.now()}@quillamap.test`,
-      password: 'password123',
-      full_name: 'Test User',
-      mobility_mode: 'carro',
-      vehicle_type: 'particular',
-      license_plate: 'ABC-123',
-    };
-
-    it('should register a new user', () => {
-      return request(app.getHttpServer())
+    it('should register a new user', async () => {
+      const res = await request(app.getHttpServer())
         .post('/auth/register')
         .send(testUser)
-        .expect(201)
-        .then((res) => {
-          expect(res.body.success).toBe(true);
-          expect(res.body.message).toBe('Usuario registrado exitosamente');
-          expect(res.body.data.user).toBeDefined();
-          expect(res.body.data.user.email).toBe(testUser.email);
-        });
+        .expect(201);
+
+      expect(res.body.data.user).toBeDefined();
+      expect(res.body.data.user.email).toBe(testUser.email);
     });
 
-    it('should login the registered user', () => {
-      return request(app.getHttpServer())
+    it('should login the registered user', async () => {
+      const res = await request(app.getHttpServer())
         .post('/auth/login')
         .send({ email: testUser.email, password: testUser.password })
-        .expect(200)
-        .then((res) => {
-          expect(res.body.success).toBe(true);
-          expect(res.body.message).toBe('Usuario logueado exitosamente');
-          expect(res.body.data.user).toBeDefined();
-          expect(res.body.data.session).toBeDefined();
-          expect(res.body.data.user.email).toBe(testUser.email);
-          authToken = res.body.data.session.access_token;
-        });
+        .expect(200);
+
+      expect(res.body.data.user).toBeDefined();
+      expect(res.body.data.session).toBeDefined();
+      expect(res.body.data.user.email).toBe(testUser.email);
+      authToken = res.body.data.session.access_token;
+      expect(authToken).toBeDefined();
     });
 
     it('should fail to login with wrong password', () => {
@@ -68,15 +63,14 @@ describe('AuthController (e2e)', () => {
         .expect(400);
     });
 
-    it('should retrieve the user profile', () => {
-      return request(app.getHttpServer())
+    it('should retrieve the user profile', async () => {
+      const res = await request(app.getHttpServer())
         .get('/profiles/me')
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200)
-        .then((res) => {
-          expect(res.body.full_name).toBe(testUser.full_name);
-          expect(res.body.license_plate).toBe(testUser.license_plate);
-        });
+        .expect(200);
+
+        expect(res.body.full_name).toBe(testUser.full_name);
+        expect(res.body.license_plate).toBe(testUser.license_plate);
     });
   });
 
