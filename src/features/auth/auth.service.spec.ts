@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from '@/features/auth/auth.service';
 import { ConfigService } from '@nestjs/config';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient, isAuthError } from '@supabase/supabase-js';
 import { RegisterDto } from '@/features/auth/dto/register.dto';
 import { LoginDto } from '@/features/auth/dto/login.dto';
 
@@ -14,6 +14,7 @@ const mockSupabaseClient = {
 
 jest.mock('@supabase/supabase-js', () => ({
   SupabaseClient: jest.fn(() => mockSupabaseClient),
+  isAuthError: jest.fn().mockReturnValue(true), // Mock isAuthError to handle test cases
 }));
 
 describe('AuthService', () => {
@@ -21,6 +22,7 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     (SupabaseClient as jest.Mock).mockClear();
+    (isAuthError as jest.Mock).mockClear(); // Also clear this mock
     mockSupabaseClient.auth.signUp.mockClear();
     mockSupabaseClient.auth.signInWithPassword.mockClear();
 
@@ -53,7 +55,7 @@ describe('AuthService', () => {
         email: 'test@example.com',
         password: 'password',
         full_name: 'Test User',
-        mobility_mode: 'walking',
+        mobility_mode: 'peaton', // Corrected Enum value
         vehicle_type: null,
         license_plate: null,
       };
@@ -83,7 +85,7 @@ describe('AuthService', () => {
         email: 'test@example.com',
         password: 'password',
         full_name: 'Test User',
-        mobility_mode: 'walking',
+        mobility_mode: 'peaton', // Corrected Enum value
         vehicle_type: null,
         license_plate: null,
       };

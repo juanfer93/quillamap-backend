@@ -27,8 +27,8 @@ describe('AuthController (e2e)', () => {
       email: `test-${Date.now()}@example.com`,
       password: 'password123',
       full_name: 'Test User',
-      mobility_mode: 'vehicle',
-      vehicle_type: 'car',
+      mobility_mode: 'carro',
+      vehicle_type: 'particular',
       license_plate: 'ABC-123',
     };
 
