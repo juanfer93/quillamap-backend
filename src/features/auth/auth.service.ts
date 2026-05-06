@@ -48,7 +48,7 @@ export class AuthService {
       email,
       password,
       options: {
-        user_metadata: {  // Changed from 'data' to 'user_metadata'
+        data: {
           full_name,
           mobility_mode,
           vehicle_type,
