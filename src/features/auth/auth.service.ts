@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
 import { SupabaseClient, SupabaseClientOptions, User, Session, isAuthError } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
@@ -34,7 +34,7 @@ export class AuthService {
   private handleAuthError(error: any, context: string) {
     if (isAuthError(error)) {
       this.logger.error(`[${context}] Auth error: ${error.message}`);
-      throw new Error(error.message);
+      throw new BadRequestException(error.message);
     } else {
       this.logger.error(`[${context}] Unknown error: ${JSON.stringify(error)}`);
       throw new Error(`An unknown error occurred in ${context}.`);

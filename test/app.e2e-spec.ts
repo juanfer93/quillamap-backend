@@ -24,7 +24,7 @@ describe('AuthController (e2e)', () => {
 
   describe('Auth flow', () => {
     const testUser = {
-      email: `test-${Date.now()}@example.com`,
+      email: `test-${Date.now()}@quillamap.test`,
       password: 'password123',
       full_name: 'Test User',
       mobility_mode: 'carro',
