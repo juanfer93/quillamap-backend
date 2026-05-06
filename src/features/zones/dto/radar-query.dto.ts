@@ -14,7 +14,7 @@ export class RadarQueryDto {
   @Type(() => Number)
   lng: number;
 
-  @ApiProperty({ description: 'Type of vehicle', enum: VehicleType, example: VehicleType.MOTORCYCLE })
+  @ApiProperty({ description: 'Type of vehicle', enum: VehicleType, example: VehicleType.MOTO })
   @IsEnum(VehicleType)
   vehicleType: VehicleType;
 

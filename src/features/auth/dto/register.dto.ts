@@ -1,28 +1,32 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum, IsString, ValidateIf, IsEmail } from 'class-validator';
-import { VehicleType } from './enums/vehicle-type.enum';
-import { CarType } from './enums/car-type.enum';
+import { MobilityMode } from '@/features/profiles/entities/mobility_mode.enum';
+import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
 
 export class RegisterDto {
   @ApiProperty()
   @IsString()
-  name: string;
+  full_name: string;
 
   @ApiProperty()
   @IsEmail()
   email: string;
 
-  @ApiProperty({ enum: VehicleType })
-  @IsEnum(VehicleType)
-  vehicleType: VehicleType;
+  @ApiProperty()
+  @IsString()
+  password: string;
 
-  @ApiProperty({ enum: CarType, nullable: true })
-  @IsEnum(CarType)
-  @ValidateIf((o) => o.vehicleType === VehicleType.CARRO)
-  carType?: CarType;
+  @ApiProperty({ enum: MobilityMode })
+  @IsEnum(MobilityMode)
+  mobility_mode: MobilityMode;
+
+  @ApiProperty({ enum: VehicleType, nullable: true })
+  @IsEnum(VehicleType)
+  @ValidateIf((o) => o.mobility_mode === MobilityMode.CARRO)
+  vehicle_type?: VehicleType;
 
   @ApiProperty({ nullable: true })
   @IsString()
-  @ValidateIf((o) => o.vehicleType === VehicleType.MOTO || o.vehicleType === VehicleType.CARRO)
-  plate?: string;
+  @ValidateIf((o) => o.mobility_mode === MobilityMode.MOTO || o.mobility_mode === MobilityMode.CARRO)
+  license_plate?: string;
 }

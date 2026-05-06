@@ -11,12 +11,12 @@ export class CreateProfileDto {
   @ApiProperty({ enum: VehicleType, nullable: true })
   @IsOptional()
   @IsEnum(VehicleType)
-  @ValidateIf((o) => o.mobility_mode !== MobilityMode.PEDESTRIAN && o.mobility_mode !== MobilityMode.TOURIST)
+  @ValidateIf((o) => o.mobility_mode !== MobilityMode.PEATON && o.mobility_mode !== MobilityMode.TURISTA)
   vehicle_type?: VehicleType;
 
   @ApiProperty({ nullable: true })
   @IsOptional()
   @IsString()
-  @ValidateIf((o) => o.mobility_mode !== MobilityMode.PEDESTRIAN && o.mobility_mode !== MobilityMode.TOURIST)
+  @ValidateIf((o) => o.mobility_mode !== MobilityMode.PEATON && o.mobility_mode !== MobilityMode.TURISTA)
   license_plate?: string;
 }
