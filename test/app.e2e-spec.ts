@@ -1,29 +1,73 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+import { AppModule } from '@/app.module';
+import { ConfigModule } from '@nestjs/config';
 
-describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+describe('AuthController (e2e)', () => {
+  let app: INestApplication;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      imports: [
+        AppModule,
+        ConfigModule.forRoot({
+          isGlobal: true,
+          envFilePath: '.env.test', // Use the test environment file
+        }),
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  describe('Auth flow', () => {
+    const testUser = {
+      email: `test-${Date.now()}@example.com`,
+      password: 'password123',
+      full_name: 'Test User',
+      mobility_mode: 'vehicle',
+      vehicle_type: 'car',
+      license_plate: 'ABC-123',
+    };
+
+    it('should register a new user', () => {
+      return request(app.getHttpServer())
+        .post('/auth/register')
+        .send(testUser)
+        .expect(201)
+        .then((res) => {
+          expect(res.body.success).toBe(true);
+          expect(res.body.message).toBe('Usuario registrado exitosamente');
+          expect(res.body.data.user).toBeDefined();
+          expect(res.body.data.user.email).toBe(testUser.email);
+        });
+    });
+
+    it('should login the registered user', () => {
+      return request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: testUser.email, password: testUser.password })
+        .expect(200)
+        .then((res) => {
+          expect(res.body.success).toBe(true);
+          expect(res.body.message).toBe('Usuario logueado exitosamente');
+          expect(res.body.data.user).toBeDefined();
+          expect(res.body.data.session).toBeDefined();
+          expect(res.body.data.user.email).toBe(testUser.email);
+        });
+    });
+
+    it('should fail to login with wrong password', () => {
+      return request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: testUser.email, password: 'wrongpassword' })
+        .expect(400);
+    });
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
   });
 });

@@ -1,10 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
-import { SupabaseClient, SupabaseClientOptions, User, Session } from '@supabase/supabase-js';
+import { SupabaseClient, SupabaseClientOptions, User, Session, isAuthError } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
+import { LoginDto } from '@/features/auth/dto/login.dto';
+import * as ws from 'ws';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private supabase: SupabaseClient;
 
   constructor(private readonly configService: ConfigService) {
@@ -21,8 +24,21 @@ export class AuthService {
         persistSession: false,
         detectSessionInUrl: false,
       },
+      realtime: {
+        transport: ws,
+      },
     };
     this.supabase = new SupabaseClient(supabaseUrl, supabaseKey, options);
+  }
+
+  private handleAuthError(error: any, context: string) {
+    if (isAuthError(error)) {
+      this.logger.error(`[${context}] Auth error: ${error.message}`);
+      throw new Error(error.message);
+    } else {
+      this.logger.error(`[${context}] Unknown error: ${JSON.stringify(error)}`);
+      throw new Error(`An unknown error occurred in ${context}.`);
+    }
   }
 
   async register(registerDto: RegisterDto): Promise<{ user: User | null; session: Session | null; }> {
@@ -42,7 +58,22 @@ export class AuthService {
     });
 
     if (error) {
-      throw new Error(error.message);
+        this.handleAuthError(error, 'register');
+    }
+
+    return data;
+  }
+
+  async login(loginDto: LoginDto): Promise<{ user: User | null; session: Session | null; }> {
+    const { email, password } = loginDto;
+
+    const { data, error } = await this.supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+        this.handleAuthError(error, 'login');
     }
 
     return data;
