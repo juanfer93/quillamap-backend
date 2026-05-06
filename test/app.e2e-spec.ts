@@ -6,15 +6,16 @@ import { ConfigModule } from '@nestjs/config';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
+  let authToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
-        AppModule,
         ConfigModule.forRoot({
+          envFilePath: '.env.test',
           isGlobal: true,
-          envFilePath: '.env.test', // Use the test environment file
         }),
+        AppModule,
       ],
     }).compile();
 
@@ -56,6 +57,7 @@ describe('AuthController (e2e)', () => {
           expect(res.body.data.user).toBeDefined();
           expect(res.body.data.session).toBeDefined();
           expect(res.body.data.user.email).toBe(testUser.email);
+          authToken = res.body.data.session.access_token;
         });
     });
 
@@ -64,6 +66,17 @@ describe('AuthController (e2e)', () => {
         .post('/auth/login')
         .send({ email: testUser.email, password: 'wrongpassword' })
         .expect(400);
+    });
+
+    it('should retrieve the user profile', () => {
+      return request(app.getHttpServer())
+        .get('/profiles/me')
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200)
+        .then((res) => {
+          expect(res.body.full_name).toBe(testUser.full_name);
+          expect(res.body.license_plate).toBe(testUser.license_plate);
+        });
     });
   });
 

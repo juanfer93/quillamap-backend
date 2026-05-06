@@ -25,7 +25,7 @@ export class AuthService {
         detectSessionInUrl: false,
       },
       realtime: {
-        transport: ws,
+        transport: ws as any,
       },
     };
     this.supabase = new SupabaseClient(supabaseUrl, supabaseKey, options);
