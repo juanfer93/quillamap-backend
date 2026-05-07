@@ -1,30 +1,38 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from '@/features/auth/auth.service';
 import { ConfigService } from '@nestjs/config';
-import { SupabaseClient, isAuthError } from '@supabase/supabase-js';
+import { createClient, AuthApiError } from '@supabase/supabase-js';
 import { RegisterDto } from '@/features/auth/dto/register.dto';
 import { LoginDto } from '@/features/auth/dto/login.dto';
+import { JwtService } from '@nestjs/jwt';
+import { MobilityMode } from '@/features/profiles/entities/mobility_mode.enum';
 
-const mockSupabaseClient = {
-  auth: {
-    signUp: jest.fn(),
-    signInWithPassword: jest.fn(),
-  },
-};
-
+// Mock the createClient function from '@supabase/supabase-js'
 jest.mock('@supabase/supabase-js', () => ({
-  SupabaseClient: jest.fn(() => mockSupabaseClient),
-  isAuthError: jest.fn().mockReturnValue(true), // Mock isAuthError to handle test cases
+  ...jest.requireActual('@supabase/supabase-js'),
+  createClient: jest.fn(),
 }));
+
+// Cast the mocked function to jest.Mock for type safety
+const mockCreateClient = createClient as jest.Mock;
 
 describe('AuthService', () => {
   let service: AuthService;
+  let mockSignUp: jest.Mock;
+  let mockSignInWithPassword: jest.Mock;
 
   beforeEach(async () => {
-    (SupabaseClient as jest.Mock).mockClear();
-    (isAuthError as jest.Mock).mockClear(); // Also clear this mock
-    mockSupabaseClient.auth.signUp.mockClear();
-    mockSupabaseClient.auth.signInWithPassword.mockClear();
+    // Create new mock functions for each test to ensure isolation
+    mockSignUp = jest.fn();
+    mockSignInWithPassword = jest.fn();
+
+    // Configure the createClient mock to return our test-specific mocks
+    mockCreateClient.mockReturnValue({
+      auth: {
+        signUp: mockSignUp,
+        signInWithPassword: mockSignInWithPassword,
+      },
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -39,14 +47,27 @@ describe('AuthService', () => {
             }),
           },
         },
+        {
+          provide: JwtService,
+          useValue: {
+            sign: jest.fn().mockReturnValue('test-token'),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
   });
 
+  afterEach(() => {
+    // Clear the master mock
+    mockCreateClient.mockClear();
+  });
+
   it('should be defined', () => {
     expect(service).toBeDefined();
+    // The AuthService constructor calls createClient once
+    expect(mockCreateClient).toHaveBeenCalledTimes(1);
   });
 
   describe('register', () => {
@@ -55,17 +76,17 @@ describe('AuthService', () => {
         email: 'test@example.com',
         password: 'password',
         full_name: 'Test User',
-        mobility_mode: 'peaton', // Corrected Enum value
-        vehicle_type: null,
-        license_plate: null,
+        mobility_mode: MobilityMode.PEATON,
+        vehicle_type: undefined,
+        license_plate: undefined,
       };
 
       const signUpResult = { data: { user: { id: '1' }, session: null }, error: null };
-      mockSupabaseClient.auth.signUp.mockResolvedValue(signUpResult);
+      mockSignUp.mockResolvedValue(signUpResult);
 
       const result = await service.register(registerDto);
 
-      expect(mockSupabaseClient.auth.signUp).toHaveBeenCalledWith({
+      expect(mockSignUp).toHaveBeenCalledWith({
         email: registerDto.email,
         password: registerDto.password,
         options: {
@@ -80,20 +101,20 @@ describe('AuthService', () => {
       expect(result).toEqual(signUpResult.data);
     });
 
-    it('should throw an error if registration fails', async () => {
+    it('should throw a BadRequestException if registration fails', async () => {
       const registerDto: RegisterDto = {
         email: 'test@example.com',
         password: 'password',
         full_name: 'Test User',
-        mobility_mode: 'peaton', // Corrected Enum value
-        vehicle_type: null,
-        license_plate: null,
+        mobility_mode: MobilityMode.PEATON,
+        vehicle_type: undefined,
+        license_plate: undefined,
       };
 
-      const error = { message: 'User already registered' };
-      mockSupabaseClient.auth.signUp.mockResolvedValue({ data: { user: null, session: null }, error });
+      const error = new AuthApiError('User already registered', 400, 'user_already_registered');
+      mockSignUp.mockResolvedValue({ data: { user: null, session: null }, error });
 
-      await expect(service.register(registerDto)).rejects.toThrow(error.message);
+      await expect(service.register(registerDto)).rejects.toThrow('User already registered');
     });
   });
 
@@ -105,27 +126,30 @@ describe('AuthService', () => {
       };
 
       const signInResult = { data: { user: { id: '1' }, session: { access_token: 'token' } }, error: null };
-      mockSupabaseClient.auth.signInWithPassword.mockResolvedValue(signInResult);
+      mockSignInWithPassword.mockResolvedValue(signInResult);
 
       const result = await service.login(loginDto);
 
-      expect(mockSupabaseClient.auth.signInWithPassword).toHaveBeenCalledWith({
+      expect(mockSignInWithPassword).toHaveBeenCalledWith({
         email: loginDto.email,
         password: loginDto.password,
       });
-      expect(result).toEqual(signInResult.data);
+      expect(result).toEqual({
+        user: signInResult.data.user,
+        accessToken: 'test-token',
+      });
     });
 
-    it('should throw an error if login fails', async () => {
+    it('should throw a BadRequestException if login fails', async () => {
       const loginDto: LoginDto = {
         email: 'test@example.com',
         password: 'wrong-password',
       };
 
-      const error = { message: 'Invalid login credentials' };
-      mockSupabaseClient.auth.signInWithPassword.mockResolvedValue({ data: { user: null, session: null }, error });
+      const error = new AuthApiError('Invalid login credentials', 400, 'invalid_login_credentials');
+      mockSignInWithPassword.mockResolvedValue({ data: { user: null, session: null }, error });
 
-      await expect(service.login(loginDto)).rejects.toThrow(error.message);
+      await expect(service.login(loginDto)).rejects.toThrow('Invalid login credentials');
     });
   });
 });

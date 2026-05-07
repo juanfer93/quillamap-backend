@@ -30,6 +30,8 @@ describe('AuthController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    // Explicitly enable shutdown hooks to ensure connections are closed.
+    app.enableShutdownHooks();
     await app.init();
   });
 
@@ -51,9 +53,9 @@ describe('AuthController (e2e)', () => {
         .expect(200);
 
       expect(res.body.user).toBeDefined();
-      expect(res.body.accessToken).toBeDefined(); // <-- Verificamos el nuevo token
+      expect(res.body.accessToken).toBeDefined();
       expect(res.body.user.email).toBe(testUser.email);
-      authToken = res.body.accessToken; // <-- Guardamos el nuevo token
+      authToken = res.body.accessToken;
     });
 
     it('should fail to login with wrong password', () => {

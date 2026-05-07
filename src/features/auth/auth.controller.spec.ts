@@ -3,29 +3,37 @@ import { AuthController } from '@/features/auth/auth.controller';
 import { AuthService } from '@/features/auth/auth.service';
 import { RegisterDto } from '@/features/auth/dto/register.dto';
 import { LoginDto } from '@/features/auth/dto/login.dto';
+import { MobilityMode } from '@/features/profiles/entities/mobility_mode.enum';
+import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
+
+// Create a type for the mocked service
+type MockAuthService = {
+  register: jest.Mock;
+  login: jest.Mock;
+};
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let service: AuthService;
-
-  const mockAuthService = {
-    register: jest.fn(),
-    login: jest.fn(),
-  };
+  let mockAuthService: MockAuthService;
 
   beforeEach(async () => {
+    // Initialize the mock service object
+    mockAuthService = {
+      register: jest.fn(),
+      login: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         {
           provide: AuthService,
-          useValue: mockAuthService,
+          useValue: mockAuthService, // Use the mocked service
         },
       ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    service = module.get<AuthService>(AuthService);
   });
 
   it('should be defined', () => {
@@ -38,20 +46,21 @@ describe('AuthController', () => {
         email: 'test@example.com',
         password: 'password',
         full_name: 'Test User',
-        mobility_mode: 'walking',
-        vehicle_type: null,
-        license_plate: null,
+        mobility_mode: MobilityMode.PEATON,
+        vehicle_type: VehicleType.PARTICULAR,
+        license_plate: '1234ABC',
       };
 
-      const result = { user: { id: '1' }, session: null };
+      const result = {
+        user: { id: '1' },
+        session: null,
+      };
+
+      // Now TypeScript knows that .mockResolvedValue exists
       mockAuthService.register.mockResolvedValue(result);
 
-      expect(await controller.register(registerDto)).toEqual({
-        success: true,
-        message: 'Usuario registrado exitosamente',
-        data: result,
-      });
-      expect(service.register).toHaveBeenCalledWith(registerDto);
+      expect(await controller.register(registerDto)).toEqual(result);
+      expect(mockAuthService.register).toHaveBeenCalledWith(registerDto);
     });
   });
 
@@ -62,15 +71,16 @@ describe('AuthController', () => {
         password: 'password',
       };
 
-      const result = { user: { id: '1' }, session: { access_token: 'token' } };
+      const result = {
+        user: { id: '1' },
+        session: { access_token: 'token' },
+      };
+
+      // Now TypeScript knows that .mockResolvedValue exists
       mockAuthService.login.mockResolvedValue(result);
 
-      expect(await controller.login(loginDto)).toEqual({
-        success: true,
-        message: 'Usuario logueado exitosamente',
-        data: result,
-      });
-      expect(service.login).toHaveBeenCalledWith(loginDto);
+      expect(await controller.login(loginDto)).toEqual(result);
+      expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
     });
   });
 });

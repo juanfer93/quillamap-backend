@@ -31,7 +31,6 @@ export class AuthService implements OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.supabase.removeAllChannels();
     await this.supabase.realtime.disconnect();
   }
 
