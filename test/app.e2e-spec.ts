@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -39,21 +40,20 @@ describe('AuthController (e2e)', () => {
         .send(testUser)
         .expect(201);
 
-      expect(res.body.data.user).toBeDefined();
-      expect(res.body.data.user.email).toBe(testUser.email);
+      expect(res.body.user).toBeDefined();
+      expect(res.body.user.email).toBe(testUser.email);
     });
 
-    it('should login the registered user', async () => {
+    it('should login the registered user and get a local JWT', async () => {
       const res = await request(app.getHttpServer())
         .post('/auth/login')
         .send({ email: testUser.email, password: testUser.password })
         .expect(200);
 
-      expect(res.body.data.user).toBeDefined();
-      expect(res.body.data.session).toBeDefined();
-      expect(res.body.data.user.email).toBe(testUser.email);
-      authToken = res.body.data.session.access_token;
-      expect(authToken).toBeDefined();
+      expect(res.body.user).toBeDefined();
+      expect(res.body.accessToken).toBeDefined(); // <-- Verificamos el nuevo token
+      expect(res.body.user.email).toBe(testUser.email);
+      authToken = res.body.accessToken; // <-- Guardamos el nuevo token
     });
 
     it('should fail to login with wrong password', () => {
@@ -63,7 +63,7 @@ describe('AuthController (e2e)', () => {
         .expect(400);
     });
 
-    it('should retrieve the user profile', async () => {
+    it('should retrieve the user profile with the local JWT', async () => {
       const res = await request(app.getHttpServer())
         .get('/profiles/me')
         .set('Authorization', `Bearer ${authToken}`)

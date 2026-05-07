@@ -1,47 +1,41 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { RegisterDto } from './dto/register.dto';
-import { SupabaseClient, SupabaseClientOptions, User, Session, isAuthError } from '@supabase/supabase-js';
+import { BadRequestException, Injectable, InternalServerErrorException, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { createClient, SupabaseClient, AuthApiError } from '@supabase/supabase-js';
 import { LoginDto } from '@/features/auth/dto/login.dto';
-import * as ws from 'ws';
+import { RegisterDto } from '@/features/auth/dto/register.dto';
+
+// Usamos require para garantizar la compatibilidad con el módulo CommonJS 'ws'
+// en el entorno de build estricto de NestJS, que fallaba con la sintaxis 'import'.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ws = require('ws');
 
 @Injectable()
-export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
+export class AuthService implements OnModuleDestroy {
   private supabase: SupabaseClient;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
+  ) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
 
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error('SUPABASE_URL and SUPABASE_KEY must be provided.');
+      throw new InternalServerErrorException('SUPABASE_URL and SUPABASE_KEY must be defined in .env file');
     }
 
-    const options: SupabaseClientOptions<'public'> = {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-      realtime: {
-        transport: ws as any,
-      },
-    };
-    this.supabase = new SupabaseClient(supabaseUrl, supabaseKey, options);
+    this.supabase = createClient(supabaseUrl, supabaseKey, {
+      realtime: { transport: ws },
+    });
   }
 
-  private handleAuthError(error: any, context: string) {
-    if (isAuthError(error)) {
-      this.logger.error(`[${context}] Auth error: ${error.message}`);
-      throw new BadRequestException(error.message);
-    } else {
-      this.logger.error(`[${context}] Unknown error: ${JSON.stringify(error)}`);
-      throw new Error(`An unknown error occurred in ${context}.`);
-    }
+  async onModuleDestroy() {
+    await this.supabase.removeAllChannels();
+    await this.supabase.realtime.disconnect();
   }
 
-  async register(registerDto: RegisterDto): Promise<{ user: User | null; session: Session | null; }> {
+  async register(registerDto: RegisterDto) {
     const { email, password, full_name, mobility_mode, vehicle_type, license_plate } = registerDto;
 
     const { data, error } = await this.supabase.auth.signUp({
@@ -58,24 +52,33 @@ export class AuthService {
     });
 
     if (error) {
-        this.handleAuthError(error, 'register');
+      if (error instanceof AuthApiError && error.status >= 400 && error.status < 500) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
     }
 
     return data;
   }
 
-  async login(loginDto: LoginDto): Promise<{ user: User | null; session: Session | null; }> {
+  async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
-
     const { data, error } = await this.supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
-        this.handleAuthError(error, 'login');
+      if (error instanceof AuthApiError && error.message === 'Invalid login credentials') {
+        throw new BadRequestException('Invalid login credentials');
+      }
+      throw error;
     }
 
-    return data;
+    const payload = { sub: data.user.id, email: data.user.email };
+    return {
+      user: data.user,
+      accessToken: this.jwtService.sign(payload),
+    };
   }
 }

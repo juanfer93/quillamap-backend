@@ -1,16 +1,18 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ProfilesService } from '@/features/profiles/profiles.service';
-import { SupabaseAuthGuard } from '@/features/auth/guards/supabase-auth.guard';
+import { JwtAuthGuard } from '@/features/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
-import type { SupabaseJwtPayload } from '@/features/auth/interfaces/supabase-payload.interface';
+
+// El objeto `user` ahora es inyectado por nuestra JwtStrategy
+type UserPayload = { userId: string; email: string };
 
 @Controller('profiles')
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(JwtAuthGuard)
 export class ProfilesController {
   constructor(private readonly profilesService: ProfilesService) {}
 
   @Get('me')
-  getMe(@CurrentUser() user: SupabaseJwtPayload) {
-    return this.profilesService.getOrCreateProfile(user.sub, user.email);
+  getMe(@CurrentUser() user: UserPayload) {
+    return this.profilesService.getOrCreateProfile(user.userId, user.email);
   }
 }
