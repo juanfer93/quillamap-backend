@@ -57,7 +57,18 @@ export class AuthService implements OnModuleDestroy {
       throw error;
     }
 
-    return data;
+    let accessToken: string | null = null;
+    
+    // Si el usuario se creó correctamente (y no requiere confirmación obligatoria)
+    if (data.user) {
+      const payload = { sub: data.user.id, email: data.user.email };
+      accessToken = this.jwtService.sign(payload);
+    }
+
+    return {
+      user: data.user,
+      accessToken,
+    };
   }
 
   async login(loginDto: LoginDto) {
