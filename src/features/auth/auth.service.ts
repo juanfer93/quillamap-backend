@@ -35,36 +35,33 @@ export class AuthService implements OnModuleDestroy {
 
   async register(registerDto: RegisterDto) {
     const { email, password, full_name, mobility_mode, vehicle_type, license_plate } = registerDto;
-
+  
     const { data, error } = await this.supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          full_name,
+          mobility_mode,
+          vehicle_type,
+          license_plate
+        }
+      }
     });
-
-    if (error) {
-      throw new BadRequestException(error.message);
-    }
-
+  
+    if (error) throw new BadRequestException(error.message);
+  
     if (data.user) {
       const profile = await this.profilesService.getOrCreateProfile(
         data.user.id, 
-        data.user.email!, 
+        data.user.email!,
         full_name 
       );
-      
-      // 2. Actualizamos el resto de preferencias vehiculares
-      await this.profilesService.updateProfile(data.user.id, {
-        mobility_mode: mobility_mode as any,
-        vehicle_type: vehicle_type as any,
-        license_plate,
-      });
-
+  
       const payload = { sub: data.user.id, email: data.user.email };
-      const accessToken = this.jwtService.sign(payload);
-
       return {
-        user: { ...data.user, ...profile }, 
-        accessToken,
+        user: profile, 
+        accessToken: this.jwtService.sign(payload),
       };
     }
   }
