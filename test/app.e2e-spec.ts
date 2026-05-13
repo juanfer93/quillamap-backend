@@ -1,9 +1,11 @@
 import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common'; 
 import request from 'supertest';
 import { AppModule } from '@/app.module';
 import { ConfigModule } from '@nestjs/config';
+
+jest.setTimeout(30000);
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -30,7 +32,9 @@ describe('AuthController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    // Explicitly enable shutdown hooks to ensure connections are closed.
+    
+    app.useGlobalPipes(new ValidationPipe());
+    
     app.enableShutdownHooks();
     await app.init();
   });
@@ -77,6 +81,9 @@ describe('AuthController (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    // 3. Validamos que app exista antes de cerrar
+    if (app) {
+      await app.close();
+    }
   });
 });
