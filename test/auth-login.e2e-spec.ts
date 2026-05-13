@@ -1,9 +1,9 @@
+import 'dotenv/config'; 
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest'; 
 import { AppModule } from './../src/app.module';
 
-// Tiempo de espera extendido para peticiones a Supabase
 jest.setTimeout(60000);
 
 describe('Auth: Login & Logout (E2E)', () => {
@@ -30,7 +30,8 @@ describe('Auth: Login & Logout (E2E)', () => {
   describe('Flujo de Sesión', () => {
     
     it('Debe iniciar sesión correctamente y devolver el perfil completo (POST /auth/login)', async () => {
-      const res = await (request as any)(app.getHttpServer())
+      // CORRECCIÓN: Ya no usamos (request as any), usamos la función limpia
+      const res = await request(app.getHttpServer())
         .post('/auth/login')
         .send({
           email: existingUser.email,
@@ -38,7 +39,6 @@ describe('Auth: Login & Logout (E2E)', () => {
         })
         .expect(200);
 
-      // Verificaciones clave
       expect(res.body).toHaveProperty('accessToken');
       expect(res.body.user.email).toBe(existingUser.email);
       expect(res.body.user.full_name).toBe(existingUser.full_name);
@@ -48,7 +48,7 @@ describe('Auth: Login & Logout (E2E)', () => {
     });
 
     it('Debe fallar el login con contraseña incorrecta (POST /auth/login)', async () => {
-      await (request as any)(app.getHttpServer())
+      await request(app.getHttpServer())
         .post('/auth/login')
         .send({
           email: existingUser.email,
@@ -58,7 +58,7 @@ describe('Auth: Login & Logout (E2E)', () => {
     });
 
     it('Debe cerrar la sesión exitosamente (POST /auth/logout)', async () => {
-      const res = await (request as any)(app.getHttpServer())
+      const res = await request(app.getHttpServer())
         .post('/auth/logout')
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
