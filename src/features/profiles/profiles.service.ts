@@ -11,13 +11,14 @@ export class ProfilesService {
     private readonly profileRepository: Repository<Profile>,
   ) {}
 
-  async getOrCreateProfile(userId: string, email: string): Promise<Profile> {
+  async getOrCreateProfile(userId: string, email: string, full_name?: string): Promise<Profile> {
     let profile = await this.profileRepository.findOne({ where: { id: userId } });
 
     if (!profile) {
       profile = this.profileRepository.create({
         id: userId,
         email,
+        full_name, 
         karma: 0,
       });
       await this.profileRepository.save(profile);

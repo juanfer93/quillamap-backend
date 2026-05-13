@@ -46,8 +46,13 @@ export class AuthService implements OnModuleDestroy {
     }
 
     if (data.user) {
-      const profile = await this.profilesService.getOrCreateProfile(data.user.id, data.user.email!);
+      const profile = await this.profilesService.getOrCreateProfile(
+        data.user.id, 
+        data.user.email!, 
+        full_name 
+      );
       
+      // 2. Actualizamos el resto de preferencias vehiculares
       await this.profilesService.updateProfile(data.user.id, {
         mobility_mode: mobility_mode as any,
         vehicle_type: vehicle_type as any,
@@ -58,7 +63,7 @@ export class AuthService implements OnModuleDestroy {
       const accessToken = this.jwtService.sign(payload);
 
       return {
-        user: { ...data.user, ...profile },
+        user: { ...data.user, ...profile }, 
         accessToken,
       };
     }
