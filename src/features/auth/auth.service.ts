@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { createClient, SupabaseClient, AuthApiError } from '@supabase/supabase-js';
 import { LoginDto } from '@/features/auth/dto/login.dto';
 import { RegisterDto } from '@/features/auth/dto/register.dto';
-import { ProfilesService } from '@/features/profiles/profiles.service'; // <-- Añadido
+import { ProfilesService } from '@/features/profiles/profiles.service'; 
 
 const ws = require('ws');
 
@@ -15,7 +15,7 @@ export class AuthService implements OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
-    private readonly profilesService: ProfilesService, // <-- Inyectar aquí
+    private readonly profilesService: ProfilesService, 
   ) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
@@ -84,5 +84,10 @@ export class AuthService implements OnModuleDestroy {
       user: profile, 
       accessToken: this.jwtService.sign(payload),
     };
+  }
+
+  async logout() {
+    await this.supabase.auth.signOut();
+    return { message: 'Sesión cerrada correctamente' };
   }
 }
