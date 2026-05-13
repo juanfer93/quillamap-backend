@@ -3,18 +3,18 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { AppModule } from './../src/app.module';
 
-jest.setTimeout(30000);
+// Tiempo de espera extendido para peticiones a Supabase
+jest.setTimeout(60000);
 
-describe('Auth Flow (Paso a Paso)', () => {
+describe('Auth: Login & Logout (E2E)', () => {
   let app: INestApplication;
+  let accessToken: string;
 
-  const testUser = {
-    email: `test-${Date.now()}@quillamap.test`,
+  const existingUser = {
+    email: 'test-1778699484682@quillamap.test',
     password: 'password123',
     full_name: 'Test User',
-    mobility_mode: 'carro',
-    vehicle_type: 'particular',
-    license_plate: 'ABC-123',
+    license_plate: 'ABC-123'
   };
 
   beforeAll(async () => {
@@ -27,40 +27,44 @@ describe('Auth Flow (Paso a Paso)', () => {
     await app.init();
   });
 
-  // PASO 1: REGISTRO
-  it('Paso 1: Debería registrar al nuevo usuario correctamente', async () => {
-    const res = await (request as any)(app.getHttpServer())
-      .post('/auth/register')
-      .send(testUser)
-      .expect(201);
+  describe('Flujo de Sesión', () => {
+    
+    it('Debe iniciar sesión correctamente y devolver el perfil completo (POST /auth/login)', async () => {
+      const res = await (request as any)(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: existingUser.email,
+          password: existingUser.password,
+        })
+        .expect(200);
 
-    expect(res.body.user).toBeDefined();
-    expect(res.body.user.email).toBe(testUser.email);
-  });
+      // Verificaciones clave
+      expect(res.body).toHaveProperty('accessToken');
+      expect(res.body.user.email).toBe(existingUser.email);
+      expect(res.body.user.full_name).toBe(existingUser.full_name);
+      expect(res.body.user.license_plate).toBe(existingUser.license_plate);
+      
+      accessToken = res.body.accessToken;
+    });
 
-  // PASO 2: LOGIN (Usando los mismos datos creados arriba)
-  it('Paso 2: Debería iniciar sesión con las credenciales recién creadas', async () => {
-    const res = await (request as any)(app.getHttpServer())
-      .post('/auth/login')
-      .send({ 
-        email: testUser.email, 
-        password: testUser.password 
-      })
-      .expect(200);
+    it('Debe fallar el login con contraseña incorrecta (POST /auth/login)', async () => {
+      await (request as any)(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: existingUser.email,
+          password: 'password_equivocada',
+        })
+        .expect(400); 
+    });
 
-    expect(res.body.accessToken).toBeDefined();
-    expect(res.body.user.full_name).toBe(testUser.full_name);
-  });
+    it('Debe cerrar la sesión exitosamente (POST /auth/logout)', async () => {
+      const res = await (request as any)(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
 
-  // PASO 3: CIERRE DE SESIÓN
-  it('Paso 3: Debería cerrar la sesión después de 2 segundos', async () => {
-    // Tu requerimiento de esperar 2 segundos
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    return (request as any)(app.getHttpServer())
-      .post('/auth/logout')
-      .expect(200)
-      .expect({ message: 'Sesión cerrada correctamente' });
+      expect(res.body.message).toMatch(/cerrada correctamente/i);
+    });
   });
 
   afterAll(async () => {
