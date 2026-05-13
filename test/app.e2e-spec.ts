@@ -22,7 +22,7 @@ describe('AuthController (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
-          envFilePath: '.env.test',
+          envFilePath: '.env',
           isGlobal: true,
         }),
         AppModule,
