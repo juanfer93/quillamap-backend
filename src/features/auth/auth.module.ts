@@ -1,28 +1,31 @@
-import { Module } from '@nestjs/common';
-import { AuthService } from '@/features/auth/auth.service';
-import { AuthController } from '@/features/auth/auth.controller';
-import { PassportModule } from '@nestjs/passport';
+// 1. Añade forwardRef en la importación de @nestjs/common
+import { Module, forwardRef } from '@nestjs/common'; 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
-import { JwtStrategy } from '@/features/auth/strategies/jwt.strategy';
+import { PassportModule } from '@nestjs/passport';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { SupabaseStrategy } from './supabase.strategy';
 import { ProfilesModule } from '@/features/profiles/profiles.module';
 
 @Module({
   imports: [
-    ConfigModule,
-    ProfilesModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
+    
+    forwardRef(() => ProfilesModule), 
+    
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('NEST_JWT_SECRET'),
         signOptions: { expiresIn: '1h' },
       }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, SupabaseStrategy],
+  exports: [AuthService, JwtModule, PassportModule],
 })
 export class AuthModule {}
