@@ -1,4 +1,3 @@
-// 1. Añade forwardRef en la importación de @nestjs/common
 import { Module, forwardRef } from '@nestjs/common'; 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -6,7 +5,6 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { SupabaseStrategy } from './supabase.strategy';
 import { ProfilesModule } from '@/features/profiles/profiles.module';
 
 @Module({
@@ -25,7 +23,7 @@ import { ProfilesModule } from '@/features/profiles/profiles.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, SupabaseStrategy],
+  providers: [AuthService, JwtStrategy],
   exports: [AuthService, JwtModule, PassportModule],
 })
 export class AuthModule {}
