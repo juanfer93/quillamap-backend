@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, InternalServerErrorException, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { createClient, SupabaseClient, AuthApiError } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { LoginDto } from '@/features/auth/dto/login.dto';
 import { RegisterDto } from '@/features/auth/dto/register.dto';
 import { ProfilesService } from '@/features/profiles/profiles.service'; 
