@@ -73,22 +73,36 @@ export class AuthService implements OnModuleDestroy {
 
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
+
     const { data, error } = await this.supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
-      if (error instanceof AuthApiError && error.message === 'Invalid login credentials') {
-        throw new BadRequestException('Invalid login credentials');
-      }
-      throw error;
+      throw new BadRequestException('Credenciales inválidas');
     }
 
-    const payload = { sub: data.user.id, email: data.user.email };
+    const { data: profile, error: profileError } = await this.supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
+    if (profileError || !profile) {
+      throw new InternalServerErrorException('Perfil de usuario no encontrado en la base de datos');
+    }
+
+    const payload = { sub: profile.id, email: profile.email };
+    
     return {
-      user: data.user,
+      user: profile, 
       accessToken: this.jwtService.sign(payload),
     };
+  }
+
+  async logout() {
+    await this.supabase.auth.signOut();
+    return { message: 'Sesión cerrada correctamente' };
   }
 }
