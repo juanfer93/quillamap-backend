@@ -6,6 +6,8 @@ import { RegisterDto } from '@/features/auth/dto/register.dto';
 import { LoginDto } from '@/features/auth/dto/login.dto';
 import { JwtService } from '@nestjs/jwt';
 import { MobilityMode } from '@/features/profiles/entities/mobility_mode.enum';
+import { ProfilesService } from '@/features/profiles/profiles.service';
+import { EmailService } from '@/features/email/email.service';
 
 // Mock the createClient function from '@supabase/supabase-js'
 jest.mock('@supabase/supabase-js', () => ({
@@ -20,11 +22,15 @@ describe('AuthService', () => {
   let service: AuthService;
   let mockSignUp: jest.Mock;
   let mockSignInWithPassword: jest.Mock;
+  let mockFindByEmail: jest.Mock;
+  let mockSendWelcomeEmail: jest.Mock;
 
   beforeEach(async () => {
     // Create new mock functions for each test to ensure isolation
     mockSignUp = jest.fn();
     mockSignInWithPassword = jest.fn();
+    mockFindByEmail = jest.fn().mockResolvedValue(null);
+    mockSendWelcomeEmail = jest.fn().mockResolvedValue(undefined);
 
     // Configure the createClient mock to return our test-specific mocks
     mockCreateClient.mockReturnValue({
@@ -51,6 +57,19 @@ describe('AuthService', () => {
           provide: JwtService,
           useValue: {
             sign: jest.fn().mockReturnValue('test-token'),
+          },
+        },
+        {
+          provide: ProfilesService,
+          useValue: {
+            findByEmail: mockFindByEmail,
+            getOrCreateProfile: jest.fn().mockResolvedValue({ id: '1', email: 'test@example.com' }),
+          },
+        },
+        {
+          provide: EmailService,
+          useValue: {
+            sendWelcomeEmail: mockSendWelcomeEmail,
           },
         },
       ],
@@ -86,8 +105,9 @@ describe('AuthService', () => {
 
       const result = await service.register(registerDto);
 
+      expect(mockFindByEmail).toHaveBeenCalledWith(registerDto.email.toLowerCase());
       expect(mockSignUp).toHaveBeenCalledWith({
-        email: registerDto.email,
+        email: registerDto.email.toLowerCase(),
         password: registerDto.password,
         options: {
           data: {
@@ -98,10 +118,33 @@ describe('AuthService', () => {
           },
         },
       });
-      expect(result).toEqual(signUpResult.data);
+      expect(result).toEqual({
+        user: { id: '1', email: 'test@example.com' },
+        accessToken: 'test-token',
+      });
+      expect(mockSendWelcomeEmail).toHaveBeenCalledWith({
+        to: 'test@example.com',
+        fullName: undefined,
+      });
     });
 
-    it('should throw a BadRequestException if registration fails', async () => {
+    it('should throw a clear BadRequestException if the profile email already exists', async () => {
+      const registerDto: RegisterDto = {
+        email: 'TEST@example.com',
+        password: 'password',
+        full_name: 'Test User',
+        mobility_mode: MobilityMode.PEATON,
+        vehicle_type: undefined,
+        license_plate: undefined,
+      };
+
+      mockFindByEmail.mockResolvedValue({ id: '1', email: 'test@example.com' });
+
+      await expect(service.register(registerDto)).rejects.toThrow('El correo ya existe. Inicia sesion o usa otro correo.');
+      expect(mockSignUp).not.toHaveBeenCalled();
+    });
+
+    it('should throw a clear BadRequestException if Supabase reports an existing email', async () => {
       const registerDto: RegisterDto = {
         email: 'test@example.com',
         password: 'password',
@@ -114,7 +157,7 @@ describe('AuthService', () => {
       const error = new AuthApiError('User already registered', 400, 'user_already_registered');
       mockSignUp.mockResolvedValue({ data: { user: null, session: null }, error });
 
-      await expect(service.register(registerDto)).rejects.toThrow('User already registered');
+      await expect(service.register(registerDto)).rejects.toThrow('El correo ya existe. Inicia sesion o usa otro correo.');
     });
   });
 
@@ -135,7 +178,7 @@ describe('AuthService', () => {
         password: loginDto.password,
       });
       expect(result).toEqual({
-        user: signInResult.data.user,
+        user: { id: '1', email: 'test@example.com' },
         accessToken: 'test-token',
       });
     });
@@ -149,7 +192,7 @@ describe('AuthService', () => {
       const error = new AuthApiError('Invalid login credentials', 400, 'invalid_login_credentials');
       mockSignInWithPassword.mockResolvedValue({ data: { user: null, session: null }, error });
 
-      await expect(service.login(loginDto)).rejects.toThrow('Invalid login credentials');
+      await expect(service.login(loginDto)).rejects.toThrow('Credenciales inválidas');
     });
   });
 });

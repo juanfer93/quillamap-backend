@@ -11,6 +11,10 @@ export class ProfilesService {
     private readonly profileRepository: Repository<Profile>,
   ) {}
 
+  async findByEmail(email: string): Promise<Profile | null> {
+    return this.profileRepository.findOne({ where: { email } });
+  }
+
   async getOrCreateProfile(userId: string, email: string, full_name?: string): Promise<Profile> {
     let profile = await this.profileRepository.findOne({ where: { id: userId } });
 
