@@ -48,6 +48,7 @@ describe('AuthController (e2e)', () => {
 
       expect(res.body.user).toBeDefined();
       expect(res.body.user.email).toBe(testUser.email);
+      expect(res.body.user.mobility_mode).toBe(testUser.mobility_mode);
     });
 
     it('should login the registered user and get a local JWT', async () => {
@@ -59,6 +60,7 @@ describe('AuthController (e2e)', () => {
       expect(res.body.user).toBeDefined();
       expect(res.body.accessToken).toBeDefined();
       expect(res.body.user.email).toBe(testUser.email);
+      expect(res.body.user.mobility_mode).toBe(testUser.mobility_mode);
       authToken = res.body.accessToken;
     });
 
@@ -76,6 +78,7 @@ describe('AuthController (e2e)', () => {
         .expect(200);
 
         expect(res.body.full_name).toBe(testUser.full_name);
+        expect(res.body.mobility_mode).toBe(testUser.mobility_mode);
         expect(res.body.license_plate).toBe(testUser.license_plate);
     });
   });

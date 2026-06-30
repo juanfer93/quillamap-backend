@@ -72,7 +72,12 @@ export class AuthService implements OnModuleDestroy {
       const profile = await this.profilesService.getOrCreateProfile(
         data.user.id, 
         data.user.email || normalizedEmail,
-        full_name 
+        full_name,
+        {
+          mobility_mode,
+          vehicle_type,
+          license_plate,
+        },
       );
 
       try {

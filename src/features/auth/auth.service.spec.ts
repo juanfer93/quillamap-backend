@@ -23,6 +23,7 @@ describe('AuthService', () => {
   let mockSignUp: jest.Mock;
   let mockSignInWithPassword: jest.Mock;
   let mockFindByEmail: jest.Mock;
+  let mockGetOrCreateProfile: jest.Mock;
   let mockSendWelcomeEmail: jest.Mock;
 
   beforeEach(async () => {
@@ -30,6 +31,11 @@ describe('AuthService', () => {
     mockSignUp = jest.fn();
     mockSignInWithPassword = jest.fn();
     mockFindByEmail = jest.fn().mockResolvedValue(null);
+    mockGetOrCreateProfile = jest.fn().mockResolvedValue({
+      id: '1',
+      email: 'test@example.com',
+      mobility_mode: MobilityMode.PEATON,
+    });
     mockSendWelcomeEmail = jest.fn().mockResolvedValue(undefined);
 
     // Configure the createClient mock to return our test-specific mocks
@@ -63,7 +69,7 @@ describe('AuthService', () => {
           provide: ProfilesService,
           useValue: {
             findByEmail: mockFindByEmail,
-            getOrCreateProfile: jest.fn().mockResolvedValue({ id: '1', email: 'test@example.com' }),
+            getOrCreateProfile: mockGetOrCreateProfile,
           },
         },
         {
@@ -118,8 +124,18 @@ describe('AuthService', () => {
           },
         },
       });
+      expect(mockGetOrCreateProfile).toHaveBeenCalledWith(
+        '1',
+        registerDto.email.toLowerCase(),
+        registerDto.full_name,
+        {
+          mobility_mode: registerDto.mobility_mode,
+          vehicle_type: registerDto.vehicle_type,
+          license_plate: registerDto.license_plate,
+        },
+      );
       expect(result).toEqual({
-        user: { id: '1', email: 'test@example.com' },
+        user: { id: '1', email: 'test@example.com', mobility_mode: MobilityMode.PEATON },
         accessToken: 'test-token',
       });
       expect(mockSendWelcomeEmail).toHaveBeenCalledWith({
@@ -178,7 +194,7 @@ describe('AuthService', () => {
         password: loginDto.password,
       });
       expect(result).toEqual({
-        user: { id: '1', email: 'test@example.com' },
+        user: { id: '1', email: 'test@example.com', mobility_mode: MobilityMode.PEATON },
         accessToken: 'test-token',
       });
     });

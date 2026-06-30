@@ -15,7 +15,12 @@ export class ProfilesService {
     return this.profileRepository.findOne({ where: { email } });
   }
 
-  async getOrCreateProfile(userId: string, email: string, full_name?: string): Promise<Profile> {
+  async getOrCreateProfile(
+    userId: string,
+    email: string,
+    full_name?: string,
+    profileData?: Partial<CreateProfileDto>,
+  ): Promise<Profile> {
     let profile = await this.profileRepository.findOne({ where: { id: userId } });
 
     if (!profile) {
@@ -24,6 +29,9 @@ export class ProfilesService {
         email,
         full_name, 
         karma: 0,
+        mobility_mode: profileData?.mobility_mode ?? null,
+        vehicle_type: profileData?.vehicle_type ?? null,
+        license_plate: profileData?.license_plate,
       });
       await this.profileRepository.save(profile);
     }
