@@ -3,5 +3,6 @@ export enum ReportType {
   BACHE = 'bache',
   TRAFICO = 'trafico',
   ACCIDENTE = 'accidente',
+  SOMBRA = 'sombra',
   OTRO = 'otro',
 }

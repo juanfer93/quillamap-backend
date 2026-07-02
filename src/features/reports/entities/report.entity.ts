@@ -33,9 +33,9 @@ export class Report {
 
   @ApiProperty({ description: 'GeoJSON Point for the report location' })
   @Column({
-    type: 'geometry',
+    type: 'geography',
     spatialFeatureType: 'Point',
-    srid: 4321, 
+    srid: 4326,
   })
   location: Point;
 

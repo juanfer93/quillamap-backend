@@ -2,15 +2,17 @@ import {
   Body,
   Controller,
   Get,
-  Param,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ReportsService } from '@/features/reports/reports.service';
 import { GetReportsFilterDto } from '@/features/reports/dto/get-reports-filter.dto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Report } from '@/features/reports/entities/report.entity';
+import { CreateReportDto } from '@/features/reports/dto/create-report.dto';
+import { JwtAuthGuard } from '@/features/auth/guards/jwt-auth.guard';
 
 @ApiTags('Reports')
 @Controller('reports')
@@ -24,4 +26,14 @@ export class ReportsController {
     return this.reportsService.findNearby(filterDto);
   }
 
+  @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Create a report at a PostGIS geography point' })
+  @ApiResponse({ status: 201, description: 'Creates a report.', type: Report })
+  createReport(
+    @Body() createReportDto: CreateReportDto,
+    @Req() request: { user: { userId: string } },
+  ) {
+    return this.reportsService.createReport(createReportDto, request.user.userId);
+  }
 }

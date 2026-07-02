@@ -40,7 +40,7 @@ export class ReportsService {
     return this.reportRepository
       .createQueryBuilder('report')
       .where(
-        'ST_DWithin(report.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4321), :radius)',
+        'ST_DWithin(report.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radius)',
         {
           lat,
           lng,
