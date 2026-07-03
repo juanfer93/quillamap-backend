@@ -6,6 +6,7 @@ import { RegisterDto } from '@/features/auth/dto/register.dto';
 import { LoginDto } from '@/features/auth/dto/login.dto';
 import { JwtService } from '@nestjs/jwt';
 import { MobilityMode } from '@/features/profiles/entities/mobility_mode.enum';
+import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
 import { ProfilesService } from '@/features/profiles/profiles.service';
 import { EmailService } from '@/features/email/email.service';
 
@@ -35,6 +36,7 @@ describe('AuthService', () => {
       id: '1',
       email: 'test@example.com',
       mobility_mode: MobilityMode.PEATON,
+      vehicle_type: VehicleType.PEATON,
     });
     mockSendWelcomeEmail = jest.fn().mockResolvedValue(undefined);
 
@@ -102,7 +104,7 @@ describe('AuthService', () => {
         password: 'password',
         full_name: 'Test User',
         mobility_mode: MobilityMode.PEATON,
-        vehicle_type: undefined,
+        vehicle_type: VehicleType.PEATON,
         license_plate: undefined,
       };
 
@@ -135,7 +137,7 @@ describe('AuthService', () => {
         },
       );
       expect(result).toEqual({
-        user: { id: '1', email: 'test@example.com', mobility_mode: MobilityMode.PEATON },
+        user: { id: '1', email: 'test@example.com', mobility_mode: MobilityMode.PEATON, vehicle_type: VehicleType.PEATON },
         accessToken: 'test-token',
       });
       expect(mockSendWelcomeEmail).toHaveBeenCalledWith({
@@ -150,7 +152,7 @@ describe('AuthService', () => {
         password: 'password',
         full_name: 'Test User',
         mobility_mode: MobilityMode.PEATON,
-        vehicle_type: undefined,
+        vehicle_type: VehicleType.PEATON,
         license_plate: undefined,
       };
 
@@ -166,7 +168,7 @@ describe('AuthService', () => {
         password: 'password',
         full_name: 'Test User',
         mobility_mode: MobilityMode.PEATON,
-        vehicle_type: undefined,
+        vehicle_type: VehicleType.PEATON,
         license_plate: undefined,
       };
 
@@ -194,7 +196,7 @@ describe('AuthService', () => {
         password: loginDto.password,
       });
       expect(result).toEqual({
-        user: { id: '1', email: 'test@example.com', mobility_mode: MobilityMode.PEATON },
+        user: { id: '1', email: 'test@example.com', mobility_mode: MobilityMode.PEATON, vehicle_type: VehicleType.PEATON },
         accessToken: 'test-token',
       });
     });
@@ -208,7 +210,7 @@ describe('AuthService', () => {
       const error = new AuthApiError('Invalid login credentials', 400, 'invalid_login_credentials');
       mockSignInWithPassword.mockResolvedValue({ data: { user: null, session: null }, error });
 
-      await expect(service.login(loginDto)).rejects.toThrow('Credenciales inválidas');
+      await expect(service.login(loginDto)).rejects.toThrow('Credenciales invalidas');
     });
   });
 });

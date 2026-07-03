@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { Point } from 'geojson';
-import { ReportsService } from '@/features/reports/reports.service';
+import { ReportsService, TRUTHFUL_REPORT_KARMA_POINTS } from '@/features/reports/reports.service';
 import { Report } from '@/features/reports/entities/report.entity';
 import { ProfilesService } from '@/features/profiles/profiles.service';
 import { CreateReportDto } from '@/features/reports/dto/create-report.dto';
@@ -95,7 +95,7 @@ describe('ReportsService', () => {
         profileId,
       });
       expect(mockReportRepository.save).toHaveBeenCalledWith(report);
-      expect(mockProfilesService.incrementKarma).toHaveBeenCalledWith(profileId, 10);
+      expect(mockProfilesService.incrementKarma).toHaveBeenCalledWith(profileId, TRUTHFUL_REPORT_KARMA_POINTS);
       expect(result).toEqual(report);
     });
   });
@@ -112,7 +112,7 @@ describe('ReportsService', () => {
       const filter: GetReportsFilterDto = {
         lat: 4.60971,
         lng: -74.08175,
-        radius: 1000,
+        radius: 2000,
       };
 
       await service.findNearby(filter);

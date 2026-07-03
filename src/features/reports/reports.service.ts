@@ -8,6 +8,8 @@ import type { GetReportsFilterDto } from '@/features/reports/dto/get-reports-fil
 import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
 import { ReportStatus } from '@/features/reports/entities/report-status.enum';
 
+export const TRUTHFUL_REPORT_KARMA_POINTS = 6;
+
 @Injectable()
 export class ReportsService {
   constructor(
@@ -29,13 +31,13 @@ export class ReportsService {
 
     const createdReport = await this.reportRepository.save(newReport);
 
-    await this.profilesService.incrementKarma(profileId, 10);
+    await this.profilesService.incrementKarma(profileId, TRUTHFUL_REPORT_KARMA_POINTS);
 
     return createdReport;
   }
 
   async findNearby(filter: GetReportsFilterDto): Promise<Report[]> {
-    const { lat, lng, radius = 5000 } = filter;
+    const { lat, lng, radius = 400 } = filter;
 
     return this.reportRepository
       .createQueryBuilder('report')

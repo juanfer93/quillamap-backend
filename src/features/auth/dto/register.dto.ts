@@ -22,7 +22,7 @@ export class RegisterDto {
 
   @ApiProperty({ enum: VehicleType, nullable: true })
   @IsEnum(VehicleType)
-  @ValidateIf((o) => o.mobility_mode === MobilityMode.CARRO)
+  @ValidateIf((o) => o.mobility_mode === MobilityMode.PEATON || o.mobility_mode === MobilityMode.CARRO)
   vehicle_type?: VehicleType;
 
   @ApiProperty({ nullable: true })

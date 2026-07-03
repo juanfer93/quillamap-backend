@@ -105,7 +105,7 @@ export class AuthService implements OnModuleDestroy {
     });
 
     if (error) {
-      throw new BadRequestException('Credenciales inválidas');
+      throw new BadRequestException('Credenciales invalidas');
     }
 
     const profile = await this.profilesService.getOrCreateProfile(data.user.id, data.user.email!);

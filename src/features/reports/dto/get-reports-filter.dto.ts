@@ -4,6 +4,7 @@ import {
   IsLongitude,
   IsNumber,
   IsOptional,
+  Max,
   Min,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -19,10 +20,11 @@ export class GetReportsFilterDto {
   @Type(() => Number)
   lng: number;
 
-  @ApiProperty({ description: 'Radius in kilometers to search for reports', example: 5, required: false })
+  @ApiProperty({ description: 'Radius in meters to search for reports', example: 2000, required: false })
   @IsNumber()
   @IsOptional()
   @Type(() => Number)
-  @Min(1)
+  @Min(300)
+  @Max(5000)
   radius?: number;
 }
