@@ -6,6 +6,7 @@ import { ProfilesModule } from '@/features/profiles/profiles.module';
 import { AuthModule } from '@/features/auth/auth.module';
 import { ReportsModule } from '@/features/reports/reports.module';
 import { ZonesModule } from '@/features/zones/zones.module';
+import { PlacesModule } from '@/features/places/places.module';
 
 @Module({
   imports: [
@@ -32,7 +33,8 @@ import { ZonesModule } from '@/features/zones/zones.module';
     ProfilesModule,
     AuthModule,
     ReportsModule,
-    ZonesModule
+    ZonesModule,
+    PlacesModule
   ],
 })
 export class AppModule {}
