@@ -30,6 +30,7 @@ interface RawPlaceRow {
   metadata?: PlaceMetadata | null;
   latitude: string | number;
   longitude: string | number;
+  distance_meters?: string | number;
   created_at?: Date;
 }
 
@@ -41,11 +42,14 @@ export class PlacesService {
   ) {}
 
   async findNearby(filter: GetPlacesFilterDto): Promise<PlaceMapFeature[]> {
-    const { lat, lng, radius = 5000, category } = filter;
+    const { lat, lng, radius = 2500, category, limit = 180 } = filter;
     const hasTouristSites = await this.hasTouristSitesTable();
+    const params = category
+      ? [lng, lat, radius, category, limit]
+      : [lng, lat, radius, limit];
     const rows = await this.placeRepository.query(
       this.buildUnifiedPlacesQuery(hasTouristSites, Boolean(category)),
-      category ? [lng, lat, radius, category] : [lng, lat, radius],
+      params,
     ) as RawPlaceRow[];
 
     return rows.map((row) => ({
@@ -72,21 +76,23 @@ export class PlacesService {
   }
 
   private buildUnifiedPlacesQuery(includeTouristSites: boolean, includeCategory: boolean): string {
-    const categoryPredicate = includeCategory ? 'and category = $4' : '';
+    const categoryPredicate = includeCategory ? 'and category::text = $4' : '';
+    const limitPlaceholder = includeCategory ? '$5' : '$4';
     const touristSitesSelect = includeTouristSites
       ? `
         union all
         select
           id::text,
-          jsonb_build_object('es', name, 'en', name) as name,
-          null as description,
+          name,
+          description,
           category::text as category,
           'tourist_site'::text as source,
           ST_AsGeoJSON(location)::jsonb as location,
           metadata,
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude,
-          null as created_at
+          ST_Distance(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) as distance_meters,
+          "createdAt" as created_at
         from tourist_sites
         where ST_DWithin(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
           ${categoryPredicate}
@@ -105,6 +111,7 @@ export class PlacesService {
           metadata,
           ST_Y(location::geometry) as latitude,
           ST_X(location::geometry) as longitude,
+          ST_Distance(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) as distance_meters,
           "createdAt" as created_at
         from places
         where ST_DWithin(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
@@ -113,7 +120,8 @@ export class PlacesService {
       )
       select *
       from unified_places
-      order by created_at desc nulls last
+      order by distance_meters asc, created_at desc nulls last
+      limit ${limitPlaceholder}
     `;
   }
 }

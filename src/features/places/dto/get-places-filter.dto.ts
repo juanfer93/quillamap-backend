@@ -34,4 +34,12 @@ export class GetPlacesFilterDto {
   @IsEnum(PlaceCategory)
   @IsOptional()
   category?: PlaceCategory;
+
+  @ApiProperty({ description: 'Maximum places returned, ordered by proximity', example: 180, required: false })
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  @Min(20)
+  @Max(250)
+  limit?: number;
 }

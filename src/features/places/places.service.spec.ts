@@ -53,8 +53,11 @@ describe('PlacesService', () => {
 
     expect(placeRepository.query).toHaveBeenLastCalledWith(
       expect.stringContaining('union all'),
-      [-74.82134, 11.01902, 5000],
+      [-74.82134, 11.01902, 5000, 180],
     );
+    expect(mockPlaceRepository.query.mock.calls[1][0]).toContain('ST_DWithin');
+    expect(mockPlaceRepository.query.mock.calls[1][0]).toContain('tourist_sites');
+    expect(mockPlaceRepository.query.mock.calls[1][0]).toContain('order by distance_meters asc');
     expect(result[0]).toMatchObject({
       source: 'tourist_site',
       coordinate: {
@@ -74,11 +77,13 @@ describe('PlacesService', () => {
       lng: -74.789,
       radius: 3000,
       category: PlaceCategory.TRANSPORTE,
+      limit: 90,
     });
 
     expect(placeRepository.query).toHaveBeenLastCalledWith(
-      expect.stringContaining('and category = $4'),
-      [-74.789, 10.987, 3000, PlaceCategory.TRANSPORTE],
+      expect.stringContaining('and category::text = $4'),
+      [-74.789, 10.987, 3000, PlaceCategory.TRANSPORTE, 90],
     );
+    expect(mockPlaceRepository.query.mock.calls[1][0]).toContain('limit $5');
   });
 });

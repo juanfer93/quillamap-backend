@@ -6,28 +6,16 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
-import type { Point, Polygon } from 'geojson';
+import type { Point } from 'geojson';
+import type {
+  PlaceMetadata,
+  PlaceLocalizedText,
+} from '@/features/places/entities/place.entity';
 import { PlaceCategory } from './place-category.enum';
 
-export interface PlaceLocalizedText {
-  es: string;
-  en?: string;
-}
-
-export interface PlaceMetadata {
-  history?: PlaceLocalizedText;
-  openingHours?: PlaceLocalizedText;
-  photos?: string[];
-  websiteUrl?: string;
-  address?: string;
-  buildingHeightMeters?: number;
-  extrusionBaseMeters?: number;
-  polygon?: Polygon;
-}
-
-@Entity('places')
-export class Place {
-  @ApiProperty({ description: 'Unique identifier for the place' })
+@Entity('tourist_sites')
+export class TouristSite {
+  @ApiProperty({ description: 'Unique identifier for the tourist site' })
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
