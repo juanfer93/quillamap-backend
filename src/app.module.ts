@@ -7,6 +7,7 @@ import { AuthModule } from '@/features/auth/auth.module';
 import { ReportsModule } from '@/features/reports/reports.module';
 import { ZonesModule } from '@/features/zones/zones.module';
 import { PlacesModule } from '@/features/places/places.module';
+import { NavigationModule } from '@/features/navigation/navigation.module';
 
 @Module({
   imports: [
@@ -34,7 +35,8 @@ import { PlacesModule } from '@/features/places/places.module';
     AuthModule,
     ReportsModule,
     ZonesModule,
-    PlacesModule
+    PlacesModule,
+    NavigationModule
   ],
 })
 export class AppModule {}
