@@ -145,11 +145,25 @@ export class NavigationService {
   }
 
   private getOsrmUrl(routeRequest: RouteRequestDto): string {
-    const baseUrl = this.configService.get<string>('OSRM_BASE_URL') ?? 'http://localhost:5000';
-    const profile = routeRequest.mode === NavigationMode.PEATON ? 'walking' : 'driving';
+    const baseUrl = this.getOsrmBaseUrl(routeRequest.mode);
+    const profile = this.getOsrmProfile(routeRequest.mode);
     const origin = `${routeRequest.origin.longitude},${routeRequest.origin.latitude}`;
     const destination = `${routeRequest.destination.longitude},${routeRequest.destination.latitude}`;
     return `${baseUrl}/route/v1/${profile}/${origin};${destination}?overview=full&geometries=geojson&alternatives=true`;
+  }
+
+  private getOsrmBaseUrl(mode: NavigationMode): string {
+    if (this.isWalkingMode(mode)) {
+      return this.configService.get<string>('OSRM_WALKING_BASE_URL') ?? 'http://localhost:5001';
+    }
+
+    return this.configService.get<string>('OSRM_DRIVING_BASE_URL') ??
+      this.configService.get<string>('OSRM_BASE_URL') ??
+      'http://localhost:5000';
+  }
+
+  private getOsrmProfile(mode: NavigationMode): 'walking' | 'driving' {
+    return this.isWalkingMode(mode) ? 'walking' : 'driving';
   }
 
   private getValhallaUrl(): string {
@@ -163,7 +177,7 @@ export class NavigationService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         locations: [routeRequest.origin, routeRequest.destination],
-        costing: routeRequest.mode === NavigationMode.PEATON ? 'pedestrian' : 'auto',
+        costing: this.isWalkingMode(routeRequest.mode) ? 'pedestrian' : 'auto',
       }),
     };
   }
@@ -235,6 +249,10 @@ export class NavigationService {
     const shadeScore = routeRequest.mode === NavigationMode.PEATON ? await this.safeCountShadeScore(route.geometry) : 0;
     const touristScore = routeRequest.mode === NavigationMode.TURISTA ? await this.safeCountTouristScore(route.geometry) : 0;
     return { ...route, shadeScore, touristScore };
+  }
+
+  private isWalkingMode(mode: NavigationMode): boolean {
+    return mode === NavigationMode.PEATON || mode === NavigationMode.TURISTA;
   }
 
   private async getRiskAssessment(route: RouteCandidate, routeRequest: RouteRequestDto): Promise<RouteRiskAssessment> {

@@ -59,7 +59,13 @@ describe('NavigationService', () => {
   const zoneRepository = { query: jest.fn() };
   const reportRepository = { query: jest.fn() };
   const zonesService = { isRestricted: jest.fn() };
-  const configService = { get: jest.fn((key: string) => (key === 'OSRM_BASE_URL' ? 'http://osrm.local' : undefined)) };
+  const configService = {
+    get: jest.fn((key: string) => ({
+      OSRM_BASE_URL: 'http://osrm.local',
+      OSRM_DRIVING_BASE_URL: 'http://osrm-car.local',
+      OSRM_WALKING_BASE_URL: 'http://osrm-foot.local',
+    })[key]),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -99,7 +105,20 @@ describe('NavigationService', () => {
       { latitude: 11.019, longitude: -74.8213 },
     ]);
     expect(zoneRepository.query.mock.calls[0][0]).toContain('ST_Intersects');
+    expect(mockFetch.mock.calls[0][0]).toContain('http://osrm-car.local');
     expect(mockFetch.mock.calls[0][0]).toContain('/route/v1/driving/');
+  });
+
+  it('usa el OSRM peatonal dedicado para modo peaton', async () => {
+    zoneRepository.query.mockResolvedValue([]);
+
+    await service.calculateRoute({
+      ...routeRequest,
+      mode: NavigationMode.PEATON,
+    });
+
+    expect(mockFetch.mock.calls[0][0]).toContain('http://osrm-foot.local');
+    expect(mockFetch.mock.calls[0][0]).toContain('/route/v1/walking/');
   });
 
   it('devuelve la mejor ruta legal con alertas cuando no hay alternativa sin riesgo', async () => {
