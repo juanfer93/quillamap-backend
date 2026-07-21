@@ -12,9 +12,11 @@ import { ZonesService } from '@/features/zones/zones.service';
 import { NavigationMode, RouteRequestDto } from '@/features/navigation/dto/route-request.dto';
 import type {
   RouteAlert,
+  RouteAlternativeSummary,
   RouteCandidate,
   RouteCoordinate,
   RouteEngineProvider,
+  RouteInstruction,
   RouteRiskAssessment,
   RouteResponse,
 } from '@/features/navigation/interfaces/route-response.interface';
@@ -26,6 +28,18 @@ interface OsrmRoute {
     type: 'LineString';
     coordinates: Array<[number, number]>;
   };
+  legs?: Array<{
+    steps?: Array<{
+      name?: string;
+      distance: number;
+      duration: number;
+      maneuver?: {
+        type?: string;
+        modifier?: string;
+        location?: [number, number];
+      };
+    }>;
+  }>;
 }
 
 interface OsrmResponse {
@@ -46,6 +60,34 @@ interface ValhallaResponse {
       shape: string;
     }>;
   };
+}
+
+interface TomTomRoute {
+  summary: {
+    lengthInMeters: number;
+    travelTimeInSeconds: number;
+    trafficDelayInSeconds?: number;
+  };
+  legs?: Array<{
+    points?: RouteCoordinate[];
+  }>;
+  guidance?: {
+    instructions?: Array<{
+      routeOffsetInMeters?: number;
+      travelTimeInSeconds?: number;
+      point?: RouteCoordinate;
+      message?: string;
+      combinedMessage?: string;
+      maneuver?: string;
+      instructionType?: string;
+      street?: string;
+      roadNumbers?: string[];
+    }>;
+  };
+}
+
+interface TomTomResponse {
+  routes?: TomTomRoute[];
 }
 
 interface StreamRiskRow {
@@ -107,21 +149,37 @@ export class NavigationService {
       provider: route.provider,
       legalStatus: rerouted ? 'rerouted' : 'allowed',
       etaIso: new Date(Date.now() + route.durationSeconds * 1000).toISOString(),
+      instructions: route.instructions,
+      alternatives: route.alternatives,
+      selectedRouteIndex: route.selectedRouteIndex,
+      trafficDelaySeconds: route.trafficDelaySeconds,
     };
   }
 
   private async fetchRouteCandidates(routeRequest: RouteRequestDto): Promise<RouteCandidate[]> {
-    const provider = this.getProvider();
+    const provider = this.getProvider(routeRequest);
     const routes = provider === 'osrm'
       ? await this.fetchOsrmRoutes(routeRequest)
-      : await this.fetchValhallaRoutes(routeRequest);
+      : provider === 'tomtom'
+        ? await this.fetchTomTomRoutes(routeRequest)
+        : await this.fetchValhallaRoutes(routeRequest);
 
     if (routes.length === 0) throw new ServiceUnavailableException('El motor de rutas no devolvio alternativas.');
     return Promise.all(routes.map((route) => this.withModeScores(route, routeRequest)));
   }
 
-  private getProvider(): RouteEngineProvider {
-    return this.configService.get<RouteEngineProvider>('ROUTING_ENGINE_PROVIDER') ?? 'osrm';
+  private getProvider(routeRequest: RouteRequestDto): RouteEngineProvider {
+    const configuredProvider = this.configService.get<RouteEngineProvider>('ROUTING_ENGINE_PROVIDER');
+
+    if (configuredProvider === 'tomtom' && this.isWalkingMode(routeRequest.mode)) {
+      return 'osrm';
+    }
+
+    if (configuredProvider) {
+      return configuredProvider;
+    }
+
+    return this.shouldUseTomTomTraffic(routeRequest.mode) ? 'tomtom' : 'osrm';
   }
 
   private async fetchOsrmRoutes(routeRequest: RouteRequestDto): Promise<RouteCandidate[]> {
@@ -129,7 +187,8 @@ export class NavigationService {
     const payload = await response.json() as OsrmResponse;
 
     if (!response.ok || payload.code !== 'Ok') throw new ServiceUnavailableException(payload.message);
-    return (payload.routes ?? []).map((route) => this.fromOsrmRoute(route));
+    const routes = payload.routes ?? [];
+    return routes.map((route, index) => this.fromOsrmRoute(route, index, routes));
   }
 
   private async fetchValhallaRoutes(routeRequest: RouteRequestDto): Promise<RouteCandidate[]> {
@@ -144,12 +203,22 @@ export class NavigationService {
     return [this.fromValhallaRoute(payload)];
   }
 
+  private async fetchTomTomRoutes(routeRequest: RouteRequestDto): Promise<RouteCandidate[]> {
+    const apiKey = this.getTomTomApiKey();
+    const response = await fetch(this.getTomTomUrl(routeRequest, apiKey));
+    const payload = await response.json() as TomTomResponse;
+
+    if (!response.ok) throw new ServiceUnavailableException('TomTom no esta disponible.');
+    const routes = payload.routes ?? [];
+    return routes.map((route, index) => this.fromTomTomRoute(route, index, routes));
+  }
+
   private getOsrmUrl(routeRequest: RouteRequestDto): string {
     const baseUrl = this.getOsrmBaseUrl(routeRequest.mode);
     const profile = this.getOsrmProfile(routeRequest.mode);
     const origin = `${routeRequest.origin.longitude},${routeRequest.origin.latitude}`;
     const destination = `${routeRequest.destination.longitude},${routeRequest.destination.latitude}`;
-    return `${baseUrl}/route/v1/${profile}/${origin};${destination}?overview=full&geometries=geojson&alternatives=true`;
+    return `${baseUrl}/route/v1/${profile}/${origin};${destination}?overview=full&geometries=geojson&steps=true&alternatives=true`;
   }
 
   private getOsrmBaseUrl(mode: NavigationMode): string {
@@ -182,7 +251,36 @@ export class NavigationService {
     };
   }
 
-  private fromOsrmRoute(route: OsrmRoute): RouteCandidate {
+  private getTomTomUrl(routeRequest: RouteRequestDto, apiKey: string): string {
+    const baseUrl = this.configService.get<string>('TOMTOM_ROUTING_BASE_URL') ?? 'https://api.tomtom.com';
+    const origin = `${routeRequest.origin.latitude},${routeRequest.origin.longitude}`;
+    const destination = `${routeRequest.destination.latitude},${routeRequest.destination.longitude}`;
+    const params = new URLSearchParams({
+      key: apiKey,
+      traffic: 'true',
+      travelMode: 'car',
+      routeRepresentation: 'polyline',
+      computeTravelTimeFor: 'all',
+      sectionType: 'traffic',
+      maxAlternatives: '2',
+      instructionsType: 'text',
+      language: this.configService.get<string>('TOMTOM_LANGUAGE') ?? 'es-ES',
+    });
+
+    return `${baseUrl}/routing/1/calculateRoute/${origin}:${destination}/json?${params.toString()}`;
+  }
+
+  private getTomTomApiKey(): string {
+    const apiKey = this.configService.get<string>('TOMTOM_API_KEY')?.trim();
+
+    if (!apiKey) {
+      throw new ServiceUnavailableException('TOMTOM_API_KEY no esta configurada.');
+    }
+
+    return apiKey;
+  }
+
+  private fromOsrmRoute(route: OsrmRoute, index = 0, alternatives: OsrmRoute[] = [route]): RouteCandidate {
     return {
       geometry: route.geometry.coordinates.map(([longitude, latitude]) => ({ latitude, longitude })),
       distanceMeters: route.distance,
@@ -190,6 +288,9 @@ export class NavigationService {
       alerts: [],
       provider: 'osrm',
       legalStatus: 'allowed',
+      instructions: this.getOsrmInstructions(route),
+      alternatives: alternatives.map((candidate, candidateIndex) => this.toOsrmAlternativeSummary(candidate, candidateIndex)),
+      selectedRouteIndex: index,
       shadeScore: 0,
       touristScore: 0,
     };
@@ -207,6 +308,86 @@ export class NavigationService {
       shadeScore: 0,
       touristScore: 0,
     };
+  }
+
+  private fromTomTomRoute(route: TomTomRoute, index = 0, alternatives: TomTomRoute[] = [route]): RouteCandidate {
+    return {
+      geometry: this.getTomTomGeometry(route),
+      distanceMeters: route.summary.lengthInMeters,
+      durationSeconds: route.summary.travelTimeInSeconds,
+      alerts: [],
+      provider: 'tomtom',
+      legalStatus: 'allowed',
+      instructions: this.getTomTomInstructions(route),
+      alternatives: alternatives.map((candidate, candidateIndex) => this.toTomTomAlternativeSummary(candidate, candidateIndex)),
+      selectedRouteIndex: index,
+      trafficDelaySeconds: route.summary.trafficDelayInSeconds,
+      shadeScore: 0,
+      touristScore: 0,
+    };
+  }
+
+  private toOsrmAlternativeSummary(route: OsrmRoute, index: number): RouteAlternativeSummary {
+    return {
+      index,
+      distanceMeters: route.distance,
+      durationSeconds: route.duration,
+      geometryPoints: route.geometry.coordinates.length,
+      provider: 'osrm',
+    };
+  }
+
+  private toTomTomAlternativeSummary(route: TomTomRoute, index: number): RouteAlternativeSummary {
+    return {
+      index,
+      distanceMeters: route.summary.lengthInMeters,
+      durationSeconds: route.summary.travelTimeInSeconds,
+      geometryPoints: this.getTomTomGeometry(route).length,
+      provider: 'tomtom',
+    };
+  }
+
+  private getOsrmInstructions(route: OsrmRoute): RouteInstruction[] {
+    return route.legs?.[0]?.steps?.map((step, index) => {
+      const street = step.name?.trim() || 'Tramo sin nombre';
+      const message = [
+        step.maneuver?.type,
+        step.maneuver?.modifier,
+        step.name ? `en ${step.name}` : null,
+      ].filter(Boolean).join(' ') || 'Continuar';
+      const [longitude, latitude] = step.maneuver?.location ?? [];
+
+      return {
+        index: index + 1,
+        message,
+        street,
+        distanceMeters: step.distance,
+        durationSeconds: step.duration,
+        coordinate: typeof latitude === 'number' && typeof longitude === 'number'
+          ? { latitude, longitude }
+          : undefined,
+      };
+    }) ?? [];
+  }
+
+  private getTomTomInstructions(route: TomTomRoute): RouteInstruction[] {
+    return route.guidance?.instructions?.map((instruction, index) => ({
+      index: index + 1,
+      message: instruction.message ?? instruction.combinedMessage ?? instruction.maneuver ?? instruction.instructionType ?? 'Continuar',
+      street: instruction.street ?? instruction.roadNumbers?.join(', ') ?? 'Tramo sin nombre',
+      distanceMeters: instruction.routeOffsetInMeters,
+      durationSeconds: instruction.travelTimeInSeconds,
+      coordinate: instruction.point,
+    })) ?? [];
+  }
+
+  private getTomTomGeometry(route: TomTomRoute): RouteCoordinate[] {
+    const points = route.legs?.flatMap((leg) => leg.points ?? []) ?? [];
+
+    return points.filter((point, index) => {
+      const previous = points[index - 1];
+      return !previous || previous.latitude !== point.latitude || previous.longitude !== point.longitude;
+    });
   }
 
   private decodePolyline(shape: string, precision = 6): RouteCoordinate[] {
@@ -253,6 +434,10 @@ export class NavigationService {
 
   private isWalkingMode(mode: NavigationMode): boolean {
     return mode === NavigationMode.PEATON || mode === NavigationMode.TURISTA;
+  }
+
+  private shouldUseTomTomTraffic(mode: NavigationMode): boolean {
+    return !this.isWalkingMode(mode) && Boolean(this.configService.get<string>('TOMTOM_API_KEY')?.trim());
   }
 
   private async getRiskAssessment(route: RouteCandidate, routeRequest: RouteRequestDto): Promise<RouteRiskAssessment> {
