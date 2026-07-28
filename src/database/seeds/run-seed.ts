@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { seedZones } from '@/database/seeds/zone.seed';
 import { seedOsmPlaces } from '@/database/seeds/osm-places.seed';
+import { seedTransit } from '@/database/seeds/transit.seed';
 import { Zone } from '@/features/zones/entities/zone.entity';
 import { Place } from '@/features/places/entities/place.entity';
 import { TouristSite } from '@/features/places/entities/tourist-site.entity';
@@ -20,6 +21,7 @@ const runSeed = async () => {
   console.log('Data Source has been initialized!');
 
   await seedZones(AppDataSource);
+  await seedTransit(AppDataSource);
   await seedOsmPlaces(AppDataSource);
 
   await AppDataSource.destroy();

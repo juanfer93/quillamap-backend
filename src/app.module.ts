@@ -8,6 +8,7 @@ import { ReportsModule } from '@/features/reports/reports.module';
 import { ZonesModule } from '@/features/zones/zones.module';
 import { PlacesModule } from '@/features/places/places.module';
 import { NavigationModule } from '@/features/navigation/navigation.module';
+import { TransitModule } from '@/features/transit/transit.module';
 
 @Module({
   imports: [
@@ -36,7 +37,8 @@ import { NavigationModule } from '@/features/navigation/navigation.module';
     ReportsModule,
     ZonesModule,
     PlacesModule,
-    NavigationModule
+    NavigationModule,
+    TransitModule
   ],
 })
 export class AppModule {}
