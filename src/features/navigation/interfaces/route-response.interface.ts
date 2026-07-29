@@ -44,6 +44,14 @@ export interface RouteAlternativeSummary {
   provider: RouteEngineProvider;
 }
 
+export type RouteShadeSegmentSource = 'community_report' | 'green_coverage' | 'park';
+
+export interface RouteShadeSegment {
+  id: string;
+  source: RouteShadeSegmentSource;
+  geometry: RouteCoordinate[];
+}
+
 export interface RouteResponse {
   geometry: RouteCoordinate[];
   distanceMeters: number;
@@ -56,6 +64,7 @@ export interface RouteResponse {
   alternatives?: RouteAlternativeSummary[];
   selectedRouteIndex?: number;
   trafficDelaySeconds?: number;
+  shadeSegments?: RouteShadeSegment[];
 }
 
 export interface RouteCandidate extends RouteResponse {

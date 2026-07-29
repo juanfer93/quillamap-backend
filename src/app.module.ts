@@ -9,6 +9,7 @@ import { ZonesModule } from '@/features/zones/zones.module';
 import { PlacesModule } from '@/features/places/places.module';
 import { NavigationModule } from '@/features/navigation/navigation.module';
 import { TransitModule } from '@/features/transit/transit.module';
+import { ThermalComfortModule } from '@/features/thermal-comfort/thermal-comfort.module';
 
 @Module({
   imports: [
@@ -38,7 +39,8 @@ import { TransitModule } from '@/features/transit/transit.module';
     ZonesModule,
     PlacesModule,
     NavigationModule,
-    TransitModule
+    TransitModule,
+    ThermalComfortModule
   ],
 })
 export class AppModule {}

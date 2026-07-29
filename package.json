@@ -19,6 +19,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "NODE_ENV=test jest --config ./test/jest-e2e.json",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seed.ts",
+    "seed:green-coverage": "ts-node -r tsconfig-paths/register src/database/seeds/run-green-coverage-seed.ts",
     "seed:transit": "ts-node -r tsconfig-paths/register src/database/seeds/run-transit-seed.ts",
     "seed:transit:sobusa": "ts-node -r tsconfig-paths/register src/database/seeds/run-sobusa-transit-seed.ts",
     "seed:transit:coolitoral": "ts-node -r tsconfig-paths/register src/database/seeds/run-coolitoral-transit-seed.ts",

@@ -124,6 +124,59 @@ describe('NavigationService', () => {
     expect(mockFetch.mock.calls[0][0]).toContain('/route/v1/walking/');
   });
 
+  it('elige la ruta peatonal con mas sombra aunque sea mas larga que la principal', async () => {
+    const shadedSegment = {
+      id: 'shade-report-1-1',
+      source: 'community_report',
+      geometry: {
+        type: 'LineString',
+        coordinates: [[-74.7889, 10.9878], [-74.8213, 11.019]],
+      },
+    };
+    zoneRepository.query.mockResolvedValue([]);
+    reportRepository.query
+      .mockResolvedValueOnce([{
+        matched_shade_reports: 0,
+        matched_parks: 0,
+        shade_score_seconds: -45,
+        heat_penalty_seconds: 45,
+        shade_segments: [],
+      }])
+      .mockResolvedValueOnce([{
+        matched_shade_reports: 2,
+        matched_parks: 0,
+        shade_score_seconds: 180,
+        heat_penalty_seconds: 0,
+        shade_segments: [shadedSegment],
+      }])
+      .mockResolvedValue([]);
+
+    const result = await service.calculateRoute({
+      ...routeRequest,
+      mode: NavigationMode.PEATON,
+      preferences: { prioritizeShade: true, avoidActiveStreams: true },
+    });
+
+    expect(result.selectedRouteIndex).toBe(1);
+    expect(result.durationSeconds).toBe(360);
+    expect(result.geometry).toEqual([
+      { latitude: 10.9878, longitude: -74.7889 },
+      { latitude: 11.019, longitude: -74.8213 },
+    ]);
+    expect(result.shadeSegments).toEqual([{
+      id: 'shade-report-1-1',
+      source: 'community_report',
+      geometry: [
+        { latitude: 10.9878, longitude: -74.7889 },
+        { latitude: 11.019, longitude: -74.8213 },
+      ],
+    }]);
+    expect(reportRepository.query.mock.calls[0][0]).toContain('ST_DWithin');
+    expect(reportRepository.query.mock.calls[0][0]).toContain('ST_SetSRID(ST_GeomFromGeoJSON($3), 4326)');
+    expect(reportRepository.query.mock.calls[0][0]).toContain('join report');
+    expect(reportRepository.query.mock.calls[0][0]).toContain('join amb_green_coverage');
+  });
+
   it('usa TomTom con trafico real para modos vehiculares cuando hay API key', async () => {
     configValues.TOMTOM_API_KEY = 'tomtom-key';
     mockFetch.mockResolvedValue({

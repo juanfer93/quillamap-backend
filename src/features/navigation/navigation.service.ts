@@ -19,6 +19,7 @@ import type {
   RouteInstruction,
   RouteRiskAssessment,
   RouteResponse,
+  RouteShadeSegment,
 } from '@/features/navigation/interfaces/route-response.interface';
 
 interface OsrmRoute {
@@ -95,7 +96,36 @@ interface StreamRiskRow {
   description: string;
 }
 
+interface ThermalComfortRow {
+  matched_shade_reports?: number;
+  matchedShadeReports?: number;
+  matched_parks?: number;
+  matchedParks?: number;
+  shade_score_seconds?: number;
+  shadeScoreSeconds?: number;
+  heat_penalty_seconds?: number;
+  heatPenaltySeconds?: number;
+  shade_segments?: unknown;
+  shadeSegments?: unknown;
+}
+
+interface ThermalComfortAssessment {
+  scoreSeconds: number;
+  shadeSegments: RouteShadeSegment[];
+}
+
 const ACTIVE_STREAM_BUFFER_METERS = 35;
+const AMB_BOUNDS = {
+  minLatitude: 10.82,
+  maxLatitude: 11.12,
+  minLongitude: -75.1,
+  maxLongitude: -74.68,
+} as const;
+const SHADE_REPORT_BUFFER_METERS = 60;
+const PARK_BUFFER_METERS = 45;
+const SHADE_REPORT_REWARD_SECONDS = 90;
+const PARK_SEGMENT_REWARD_SECONDS = 120;
+const UNSHADED_WALK_PENALTY_SECONDS = 45;
 const INFINITE_PENALTY_SECONDS = 2_147_483_647;
 
 @Injectable()
@@ -108,6 +138,7 @@ export class NavigationService {
   ) {}
 
   async calculateRoute(routeRequest: RouteRequestDto): Promise<RouteResponse> {
+    this.assertRequestWithinAmb(routeRequest);
     const candidates = await this.fetchRouteCandidates(routeRequest);
     const assessed = await Promise.all(candidates.map((candidate) => this.assessRoute(candidate, routeRequest)));
     const legalRoutes = assessed.filter((candidate) => !candidate.risk.isLegalBlocked);
@@ -153,6 +184,7 @@ export class NavigationService {
       alternatives: route.alternatives,
       selectedRouteIndex: route.selectedRouteIndex,
       trafficDelaySeconds: route.trafficDelaySeconds,
+      shadeSegments: route.shadeSegments,
     };
   }
 
@@ -427,9 +459,12 @@ export class NavigationService {
   }
 
   private async withModeScores(route: RouteCandidate, routeRequest: RouteRequestDto): Promise<RouteCandidate> {
-    const shadeScore = routeRequest.mode === NavigationMode.PEATON ? await this.safeCountShadeScore(route.geometry) : 0;
+    const thermalComfort = routeRequest.mode === NavigationMode.PEATON && routeRequest.preferences?.prioritizeShade !== false
+      ? await this.safeGetThermalComfort(route.geometry)
+      : { scoreSeconds: 0, shadeSegments: [] };
+    const shadeScore = thermalComfort.scoreSeconds;
     const touristScore = routeRequest.mode === NavigationMode.TURISTA ? await this.safeCountTouristScore(route.geometry) : 0;
-    return { ...route, shadeScore, touristScore };
+    return { ...route, shadeScore, touristScore, shadeSegments: thermalComfort.shadeSegments };
   }
 
   private isWalkingMode(mode: NavigationMode): boolean {
@@ -531,19 +566,95 @@ export class NavigationService {
     return VehicleType.PEATON;
   }
 
-  private async countShadeScore(geometry: RouteCoordinate[]): Promise<number> {
+  private async getThermalComfort(geometry: RouteCoordinate[]): Promise<ThermalComfortAssessment> {
     const rows = await this.reportRepository.query(
-      `select count(*)::int as total from report where type = $1 and status = $2 and ST_DWithin(location, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326)::geography, 60)`,
-      [ReportType.SOMBRA, ReportStatus.ACTIVO, JSON.stringify(this.toLineString(geometry))],
-    ) as Array<{ total: number }>;
-    return (rows[0]?.total ?? 0) * 90;
+      `
+      with route as (
+        select ST_SetSRID(ST_GeomFromGeoJSON($3), 4326) as geom
+      ),
+      route_segments as (
+        select dumped.path[1] as segment_index, dumped.geom as geom
+        from route
+        cross join lateral ST_DumpSegments(route.geom) as dumped(path, geom)
+      ),
+      community_segments as (
+        select distinct
+          concat('shade-report-', report.id::text, '-', route_segments.segment_index::text) as id,
+          'community_report' as source,
+          route_segments.geom
+        from route_segments
+        join report
+          on report.type = $1
+          and report.status = $2
+          and ST_DWithin(report.location, route_segments.geom::geography, $4)
+      ),
+      park_segments as (
+        select distinct
+          concat('green-coverage-', coverage.id::text, '-', route_segments.segment_index::text) as id,
+          case when coverage.type = 'park' then 'park' else 'green_coverage' end as source,
+          route_segments.geom
+        from route_segments
+        join amb_green_coverage coverage
+          on coverage.type in ('tree', 'park', 'grass')
+          and ST_DWithin(
+            coverage.geometry,
+            route_segments.geom::geography,
+            $5
+          )
+      ),
+      matched_segments as (
+        select * from community_segments
+        union all
+        select * from park_segments
+      )
+      select
+        (select count(distinct id)::int from community_segments) as matched_shade_reports,
+        (select count(distinct id)::int from park_segments) as matched_parks,
+        case
+          when count(*) = 0 then -$8::int
+          else
+            (select count(distinct id)::int from community_segments) * $6::int +
+            (select count(distinct id)::int from park_segments) * $7::int
+        end as shade_score_seconds,
+        case when count(*) = 0 then $8::int else 0 end as heat_penalty_seconds,
+        coalesce(
+          json_agg(
+            json_build_object(
+              'id', id,
+              'source', source,
+              'geometry', ST_AsGeoJSON(geom)::json
+            )
+            order by id
+          ) filter (where id is not null),
+          '[]'::json
+        ) as shade_segments
+      from matched_segments
+      `,
+      [
+        ReportType.SOMBRA,
+        ReportStatus.ACTIVO,
+        JSON.stringify(this.toLineString(geometry)),
+        SHADE_REPORT_BUFFER_METERS,
+        PARK_BUFFER_METERS,
+        SHADE_REPORT_REWARD_SECONDS,
+        PARK_SEGMENT_REWARD_SECONDS,
+        UNSHADED_WALK_PENALTY_SECONDS,
+      ],
+    ) as ThermalComfortRow[];
+    const row = rows[0];
+    const scoreSeconds = this.toNumber(row?.shade_score_seconds ?? row?.shadeScoreSeconds, -UNSHADED_WALK_PENALTY_SECONDS);
+
+    return {
+      scoreSeconds,
+      shadeSegments: this.toShadeSegments(row?.shade_segments ?? row?.shadeSegments),
+    };
   }
 
-  private async safeCountShadeScore(geometry: RouteCoordinate[]): Promise<number> {
+  private async safeGetThermalComfort(geometry: RouteCoordinate[]): Promise<ThermalComfortAssessment> {
     try {
-      return await this.countShadeScore(geometry);
+      return await this.getThermalComfort(geometry);
     } catch {
-      return 0;
+      return { scoreSeconds: 0, shadeSegments: [] };
     }
   }
 
@@ -568,5 +679,74 @@ export class NavigationService {
       type: 'LineString' as const,
       coordinates: geometry.map((point) => [point.longitude, point.latitude]),
     };
+  }
+
+  private assertRequestWithinAmb(routeRequest: RouteRequestDto): void {
+    if (this.isWithinAmbBounds(routeRequest.origin) && this.isWithinAmbBounds(routeRequest.destination)) {
+      return;
+    }
+
+    throw new BadRequestException('El algoritmo peatonal de confort termico solo opera dentro del AMB.');
+  }
+
+  private isWithinAmbBounds(coordinate: RouteCoordinate): boolean {
+    return coordinate.latitude >= AMB_BOUNDS.minLatitude &&
+      coordinate.latitude <= AMB_BOUNDS.maxLatitude &&
+      coordinate.longitude >= AMB_BOUNDS.minLongitude &&
+      coordinate.longitude <= AMB_BOUNDS.maxLongitude;
+  }
+
+  private toNumber(value: unknown, fallback = 0): number {
+    const numeric = typeof value === 'string' ? Number(value) : value;
+    return typeof numeric === 'number' && Number.isFinite(numeric) ? numeric : fallback;
+  }
+
+  private toShadeSegments(value: unknown): RouteShadeSegment[] {
+    const rawSegments = typeof value === 'string' ? JSON.parse(value) as unknown : value;
+
+    if (!Array.isArray(rawSegments)) {
+      return [];
+    }
+
+    return rawSegments.flatMap((segment): RouteShadeSegment[] => {
+      const candidate = segment as {
+        id?: unknown;
+        source?: unknown;
+        geometry?: {
+          type?: unknown;
+          coordinates?: unknown;
+        };
+      };
+
+      if (
+        typeof candidate.id !== 'string' ||
+        (
+          candidate.source !== 'community_report' &&
+          candidate.source !== 'green_coverage' &&
+          candidate.source !== 'park'
+        ) ||
+        candidate.geometry?.type !== 'LineString' ||
+        !Array.isArray(candidate.geometry.coordinates)
+      ) {
+        return [];
+      }
+
+      const geometry = candidate.geometry.coordinates.flatMap((coordinate): RouteCoordinate[] => {
+        if (
+          !Array.isArray(coordinate) ||
+          coordinate.length < 2 ||
+          !Number.isFinite(coordinate[0]) ||
+          !Number.isFinite(coordinate[1])
+        ) {
+          return [];
+        }
+
+        return [{ longitude: coordinate[0], latitude: coordinate[1] }];
+      });
+
+      return geometry.length > 1
+        ? [{ id: candidate.id, source: candidate.source, geometry }]
+        : [];
+    });
   }
 }
