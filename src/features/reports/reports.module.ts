@@ -5,9 +5,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Report } from '@/features/reports/entities/report.entity';
 import { ProfilesModule } from '@/features/profiles/profiles.module';
 import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
+import { EvidenceModule } from '@/features/evidence/evidence.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Report, ReportValidation]), ProfilesModule],
+  imports: [
+    TypeOrmModule.forFeature([Report, ReportValidation]),
+    ProfilesModule,
+    EvidenceModule,
+  ],
   controllers: [ReportsController],
   providers: [ReportsService],
 })

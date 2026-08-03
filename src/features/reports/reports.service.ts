@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Report } from '@/features/reports/entities/report.entity';
 import { Repository } from 'typeorm';
@@ -7,6 +12,8 @@ import { ProfilesService } from '@/features/profiles/profiles.service';
 import type { GetReportsFilterDto } from '@/features/reports/dto/get-reports-filter.dto';
 import { ReportValidation } from '@/features/reports/entities/report-validation.entity';
 import { ReportStatus } from '@/features/reports/entities/report-status.enum';
+import { SupabaseStorageService } from '@/features/evidence/supabase-storage.service';
+import { ALLOWED_EVIDENCE_MIME_TYPES } from '@/features/evidence/evidence.constants';
 
 export const TRUTHFUL_REPORT_KARMA_POINTS = 6;
 
@@ -18,6 +25,7 @@ export class ReportsService {
     @InjectRepository(ReportValidation)
     private readonly reportValidationRepository: Repository<ReportValidation>,
     private readonly profilesService: ProfilesService,
+    private readonly supabaseStorageService: SupabaseStorageService,
   ) {}
 
   async createReport(
@@ -31,7 +39,10 @@ export class ReportsService {
 
     const createdReport = await this.reportRepository.save(newReport);
 
-    await this.profilesService.incrementKarma(profileId, TRUTHFUL_REPORT_KARMA_POINTS);
+    await this.profilesService.incrementKarma(
+      profileId,
+      TRUTHFUL_REPORT_KARMA_POINTS,
+    );
 
     return createdReport;
   }
@@ -58,7 +69,9 @@ export class ReportsService {
     profileId: string,
     isConfirmed: boolean,
   ): Promise<void> {
-    const report = await this.reportRepository.findOneOrFail({ where: { id: reportId } });
+    const report = await this.reportRepository.findOneOrFail({
+      where: { id: reportId },
+    });
 
     if (report.profileId === profileId) {
       throw new ForbiddenException('Users cannot validate their own reports.');
@@ -84,6 +97,52 @@ export class ReportsService {
         report.status = ReportStatus.RESUELTO; // Assuming RESUELTO means resolved/false
         await this.reportRepository.save(report);
       }
+    }
+  }
+
+  async uploadEvidence(
+    reportId: string,
+    profileId: string,
+    file: Express.Multer.File,
+  ): Promise<Report> {
+    this.assertValidEvidenceImage(file);
+
+    const report = await this.reportRepository.findOne({
+      where: { id: reportId },
+    });
+
+    if (!report) {
+      throw new NotFoundException(
+        `Report with id "${reportId}" was not found.`,
+      );
+    }
+
+    if (report.profileId !== profileId) {
+      throw new ForbiddenException(
+        'Users cannot upload evidence to reports they do not own.',
+      );
+    }
+
+    const imageUrl = await this.supabaseStorageService.uploadReportImage(
+      reportId,
+      file.buffer,
+      file.mimetype,
+    );
+
+    report.imageUrl = imageUrl;
+
+    return this.reportRepository.save(report);
+  }
+
+  private assertValidEvidenceImage(file: Express.Multer.File): void {
+    if (!file) {
+      throw new BadRequestException('An evidence image file is required.');
+    }
+
+    if (!ALLOWED_EVIDENCE_MIME_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Invalid image type "${file.mimetype}". Allowed types: ${ALLOWED_EVIDENCE_MIME_TYPES.join(', ')}`,
+      );
     }
   }
 }
