@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -30,7 +35,10 @@ import type {
   TransitCommunityValidationDto,
   TransitCommunityValidationResult,
 } from '@/features/transit/dto/transit-community-validation.dto';
-import { TransitMode, TransitRouteRequestDto } from '@/features/transit/dto/transit-route-request.dto';
+import {
+  TransitMode,
+  TransitRouteRequestDto,
+} from '@/features/transit/dto/transit-route-request.dto';
 import type {
   OtpPlanResponse,
   TransitAlert,
@@ -65,54 +73,76 @@ import type {
   TransitTransmetroSuggestionRow,
   TransitWalkingEstimate,
 } from '@/features/transit/interfaces/transit-query-row.interface';
+import {
+  TRANSIT_MAP_ROUTES_QUERY,
+  TRANSIT_MAP_STOPS_QUERY,
+} from '@/features/transit/queries/transit-map.query';
+import { TRANSIT_ROUTE_STREETS_QUERY } from '@/features/transit/queries/transit-route-streets.query';
+import { TRANSIT_BUS_SUGGESTIONS_QUERY } from '@/features/transit/queries/transit-bus-suggestions.query';
+import { TRANSMETRO_SUGGESTIONS_QUERY } from '@/features/transit/queries/transmetro-suggestions.query';
 
 @Injectable()
 export class TransitService {
   constructor(
     private readonly configService: ConfigService,
-    @InjectRepository(Report) private readonly reportRepository: Repository<Report>,
+    @InjectRepository(Report)
+    private readonly reportRepository: Repository<Report>,
     private readonly dataSource: DataSource,
   ) {}
 
-  async calculateItineraries(routeRequest: TransitRouteRequestDto): Promise<TransitRouteResponse> {
+  async calculateItineraries(
+    routeRequest: TransitRouteRequestDto,
+  ): Promise<TransitRouteResponse> {
     this.assertSupportedMode(routeRequest.mode);
     const otpPayload = await this.fetchOtpPlan(routeRequest);
     const rawItineraries = otpPayload.plan?.itineraries ?? [];
 
     if (rawItineraries.length === 0) {
-      throw new ServiceUnavailableException(otpPayload.error?.msg ?? otpPayload.error?.message ?? 'OTP no devolvio itinerarios.');
+      throw new ServiceUnavailableException(
+        otpPayload.error?.msg ??
+          otpPayload.error?.message ??
+          'OTP no devolvio itinerarios.',
+      );
     }
 
-    const assessed = await Promise.all(rawItineraries.map(async (itinerary, index) => {
-      const mapped = this.toTransitItinerary(itinerary, index, routeRequest);
-      const alerts = await this.getActiveStreamAlerts(mapped);
-      return {
-        itinerary: {
-          ...mapped,
-          alerts,
-          riskStatus: alerts.length > 0 ? 'blocked' as const : 'clear' as const,
-        },
-        hasRisk: alerts.length > 0,
-      };
-    }));
+    const assessed = await Promise.all(
+      rawItineraries.map(async (itinerary, index) => {
+        const mapped = this.toTransitItinerary(itinerary, index, routeRequest);
+        const alerts = await this.getActiveStreamAlerts(mapped);
+        return {
+          itinerary: {
+            ...mapped,
+            alerts,
+            riskStatus:
+              alerts.length > 0 ? ('blocked' as const) : ('clear' as const),
+          },
+          hasRisk: alerts.length > 0,
+        };
+      }),
+    );
     const safe = assessed.find((candidate) => !candidate.hasRisk)?.itinerary;
     const selected = safe ?? assessed[0].itinerary;
     const rerouted = assessed[0].itinerary.id !== selected.id;
     const riskStatus = rerouted ? 'rerouted' : selected.riskStatus;
 
     return {
-      itineraries: [{
-        ...selected,
-        riskStatus,
-        recalculatedForRisk: rerouted,
-      }],
-      sourceSnapshots: [{
-        id: 'quilla-gtfs',
-        kind: 'manual_override',
-        version: this.getSourceVersion(),
-        fetchedAtIso: new Date().toISOString(),
-        notes: 'Runtime GTFS consolidado desde fuentes oficiales, OSM y overrides QuillaMap.',
-      }],
+      itineraries: [
+        {
+          ...selected,
+          riskStatus,
+          recalculatedForRisk: rerouted,
+        },
+      ],
+      sourceSnapshots: [
+        {
+          id: 'quilla-gtfs',
+          kind: 'manual_override',
+          version: this.getSourceVersion(),
+          fetchedAtIso: new Date().toISOString(),
+          notes:
+            'Runtime GTFS consolidado desde fuentes oficiales, OSM y overrides QuillaMap.',
+        },
+      ],
       generatedAtIso: new Date().toISOString(),
     };
   }
@@ -121,10 +151,13 @@ export class TransitService {
     validationRequest: TransitCommunityValidationDto,
   ): Promise<TransitCommunityValidationResult> {
     if (validationRequest.accuracyMeters > PHYSICAL_VALIDATION_RADIUS_METERS) {
-      return { accepted: false, reason: 'GPS accuracy is too low for physical route validation.' };
+      return {
+        accepted: false,
+        reason: 'GPS accuracy is too low for physical route validation.',
+      };
     }
 
-    const rows = await this.reportRepository.query(
+    const rows = await this.reportRepository.query<PresenceValidationRow[]>(
       `
       select id,
         ST_Distance(
@@ -149,13 +182,14 @@ export class TransitService {
         validationRequest.stopId ?? null,
         PHYSICAL_VALIDATION_RADIUS_METERS,
       ],
-    ) as PresenceValidationRow[];
+    );
     const nearest = rows[0];
 
     if (!nearest) {
       return {
         accepted: false,
-        reason: 'No hay presencia fisica server-side cerca de la ruta o paradero.',
+        reason:
+          'No hay presencia fisica server-side cerca de la ruta o paradero.',
       };
     }
 
@@ -167,97 +201,75 @@ export class TransitService {
 
   async getTransitMap(): Promise<TransitMapResponse> {
     const [routeRows, stopRows] = await Promise.all([
-      this.dataSource.query(
-        `
-        select
-          s.id,
-          s.route_id,
-          r.short_name,
-          r.long_name,
-          r.agency_kind,
-          r.source_kind,
-          r.operator_name,
-          r.metadata as route_metadata,
-          coalesce(
-            (
-              select jsonb_agg(street.value)
-              from jsonb_array_elements_text(coalesce(s.metadata->'streets', '[]'::jsonb)) as street(value)
-            ),
-            '[]'::jsonb
-          ) as streets,
-          ST_AsGeoJSON(s.geom)::json as geometry
-        from transit_shapes s
-        inner join transit_routes r on r.id = s.route_id
-        order by r.agency_kind asc, r.short_name asc, s.id asc
-        limit $1
-        `,
-        [TRANSIT_MAP_ROUTE_LIMIT],
-      ) as Promise<TransitMapRouteRow[]>,
-      this.dataSource.query(
-        `
-        select
-          s.id,
-          s.route_id,
-          s.name,
-          s.agency_kind,
-          coalesce(r.source_kind, 'osm_overpass') as source_kind,
-          ST_AsGeoJSON(s.geom)::json as geometry
-        from transit_stops s
-        left join transit_routes r on r.id = s.route_id
-        order by s.name asc, s.id asc
-        limit $1
-        `,
-        [TRANSIT_MAP_STOP_LIMIT],
-      ) as Promise<TransitMapStopRow[]>,
+      this.dataSource.query<TransitMapRouteRow[]>(TRANSIT_MAP_ROUTES_QUERY, [
+        TRANSIT_MAP_ROUTE_LIMIT,
+      ]),
+      this.dataSource.query<TransitMapStopRow[]>(TRANSIT_MAP_STOPS_QUERY, [
+        TRANSIT_MAP_STOP_LIMIT,
+      ]),
     ]);
 
     const routeFeatures = routeRows.flatMap((row): TransitMapRouteFeature[] => {
-      if (row.geometry?.type !== 'LineString' || row.geometry.coordinates.length < 3) {
+      if (
+        row.geometry?.type !== 'LineString' ||
+        row.geometry.coordinates.length < 3
+      ) {
         return [];
       }
 
       const color = this.getTransitMapColor(row.agency_kind, row.source_kind);
-      const operatingStatus = this.getTransitOperatingStatus(row.route_metadata, new Date(), row.short_name);
-      return [{
-        type: 'Feature',
-        id: row.id,
-        properties: {
+      const operatingStatus = this.getTransitOperatingStatus(
+        row.route_metadata,
+        new Date(),
+        row.short_name,
+      );
+      return [
+        {
+          type: 'Feature',
           id: row.id,
-          kind: 'route',
-          routeId: row.route_id,
-          shortName: row.short_name,
-          longName: row.long_name ?? undefined,
-          agencyKind: row.agency_kind,
-          sourceKind: row.source_kind,
-          operatorName: row.operator_name ?? undefined,
-          streets: row.streets ?? [],
-          ...operatingStatus,
-          color,
+          properties: {
+            id: row.id,
+            kind: 'route',
+            routeId: row.route_id,
+            shortName: row.short_name,
+            longName: row.long_name ?? undefined,
+            agencyKind: row.agency_kind,
+            sourceKind: row.source_kind,
+            operatorName: row.operator_name ?? undefined,
+            streets: row.streets ?? [],
+            ...operatingStatus,
+            color,
+          },
+          geometry: row.geometry,
         },
-        geometry: row.geometry,
-      }];
+      ];
     });
 
     const stopFeatures = stopRows.flatMap((row): TransitMapStopFeature[] => {
-      if (row.geometry?.type !== 'Point' || row.geometry.coordinates.length < 2) {
+      if (
+        row.geometry?.type !== 'Point' ||
+        row.geometry.coordinates.length < 2
+      ) {
         return [];
       }
 
       const color = this.getTransitMapColor(row.agency_kind, row.source_kind);
-      return [{
-        type: 'Feature',
-        id: row.id,
-        properties: {
+      return [
+        {
+          type: 'Feature',
           id: row.id,
-          kind: 'stop',
-          routeId: row.route_id ?? undefined,
-          name: row.name,
-          agencyKind: row.agency_kind,
-          sourceKind: row.source_kind,
-          color,
+          properties: {
+            id: row.id,
+            kind: 'stop',
+            routeId: row.route_id ?? undefined,
+            name: row.name,
+            agencyKind: row.agency_kind,
+            sourceKind: row.source_kind,
+            color,
+          },
+          geometry: row.geometry,
         },
-        geometry: row.geometry,
-      }];
+      ];
     });
 
     return {
@@ -267,62 +279,56 @@ export class TransitService {
     };
   }
 
-  async getTransitRouteStreets(routeKey: string): Promise<TransitRouteStreetsResponse> {
+  async getTransitRouteStreets(
+    routeKey: string,
+  ): Promise<TransitRouteStreetsResponse> {
     const normalizedRouteKey = routeKey.trim();
     if (!normalizedRouteKey) {
-      throw new BadRequestException('Debes enviar el id o shortName de la ruta.');
+      throw new BadRequestException(
+        'Debes enviar el id o shortName de la ruta.',
+      );
     }
 
-    const rows = await this.dataSource.query(
-      `
-      select
-        r.id as route_id,
-        r.short_name,
-        r.long_name,
-        r.agency_kind,
-        r.source_kind as route_source_kind,
-        r.operator_name,
-        r.metadata as route_metadata,
-        s.id as shape_id,
-        s.source_kind as shape_source_kind,
-        s.metadata as shape_metadata,
-        case
-          when s.geom is null then null
-          else ST_NPoints(s.geom)
-        end as coordinates_count
-      from public.transit_routes r
-      left join public.transit_shapes s on s.route_id = r.id
-      where lower(r.id) = lower($1)
-      or lower(r.short_name) = lower($1)
-      order by s.id asc
-      `,
+    const rows = await this.dataSource.query<TransitRouteStreetsRow[]>(
+      TRANSIT_ROUTE_STREETS_QUERY,
       [normalizedRouteKey],
-    ) as TransitRouteStreetsRow[];
+    );
 
     if (rows.length === 0) {
       throw new NotFoundException(`No encontre la ruta ${normalizedRouteKey}.`);
     }
 
     const routeRow = rows[0];
-    const operatingStatus = this.getTransitOperatingStatus(routeRow.route_metadata, new Date(), routeRow.short_name);
+    const operatingStatus = this.getTransitOperatingStatus(
+      routeRow.route_metadata,
+      new Date(),
+      routeRow.short_name,
+    );
     const directions = rows
       .filter((row) => row.shape_id)
       .map((row) => {
-        const streets = this.uniqueOrdered(this.toStringArray(row.shape_metadata?.streets));
+        const streets = this.uniqueOrdered(
+          this.toStringArray(row.shape_metadata?.streets),
+        );
 
         return {
           shapeId: row.shape_id as string,
           sourceKind: row.shape_source_kind ?? routeRow.route_source_kind,
-          directionLabel: row.shape_metadata?.directionLabel ?? row.shape_metadata?.direction,
+          directionLabel:
+            row.shape_metadata?.directionLabel ?? row.shape_metadata?.direction,
           geometryStatus: row.shape_metadata?.geometryStatus,
           streets,
           coordinatesCount: Number(row.coordinates_count ?? 0),
         };
       });
-    const streets = this.uniqueOrdered(directions.flatMap((direction) => direction.streets));
+    const streets = this.uniqueOrdered(
+      directions.flatMap((direction) => direction.streets),
+    );
     const hasGeometry = directions.length > 0;
     const hasStreetSequence = streets.length > 0;
-    const hasDirectionSplit = directions.some((direction) => Boolean(direction.directionLabel));
+    const hasDirectionSplit = directions.some((direction) =>
+      Boolean(direction.directionLabel),
+    );
 
     return {
       route: {
@@ -340,78 +346,22 @@ export class TransitService {
         hasGeometry,
         hasStreetSequence,
         directionSplit: hasDirectionSplit ? 'available' : 'not_available',
-        note: this.getTransitRouteStreetsCoverageNote(hasGeometry, hasStreetSequence, hasDirectionSplit),
+        note: this.getTransitRouteStreetsCoverageNote(
+          hasGeometry,
+          hasStreetSequence,
+          hasDirectionSplit,
+        ),
       },
       generatedAtIso: new Date().toISOString(),
     };
   }
 
-  async getTransitBusSuggestions(routeRequest: TransitRouteRequestDto): Promise<TransitBusSuggestionsResponse> {
+  async getTransitBusSuggestions(
+    routeRequest: TransitRouteRequestDto,
+  ): Promise<TransitBusSuggestionsResponse> {
     this.assertSupportedMode(routeRequest.mode);
-    const rows = await this.dataSource.query(
-      `
-      with points as (
-        select
-          ST_SetSRID(ST_MakePoint($1, $2), 4326) as origin_geom,
-          ST_SetSRID(ST_MakePoint($3, $4), 4326) as destination_geom
-      ),
-      candidates as (
-        select
-          r.id as route_id,
-          r.short_name,
-          r.long_name,
-          r.agency_kind,
-          r.source_kind as route_source_kind,
-          r.operator_name,
-          r.metadata as route_metadata,
-          s.id as shape_id,
-          s.source_kind as shape_source_kind,
-          s.metadata as shape_metadata,
-          ST_Distance(s.geom::geography, p.origin_geom::geography) as origin_walk_meters,
-          ST_Distance(s.geom::geography, p.destination_geom::geography) as destination_walk_meters,
-          ST_LineLocatePoint(s.geom, ST_ClosestPoint(s.geom, p.origin_geom)) as origin_fraction,
-          ST_LineLocatePoint(s.geom, ST_ClosestPoint(s.geom, p.destination_geom)) as destination_fraction,
-          ST_ClosestPoint(s.geom, p.origin_geom) as boarding_geom,
-          ST_ClosestPoint(s.geom, p.destination_geom) as alighting_geom
-        from public.transit_shapes s
-        inner join public.transit_routes r on r.id = s.route_id
-        cross join points p
-        where ST_DWithin(s.geom::geography, p.origin_geom::geography, $5)
-        and ST_DWithin(s.geom::geography, p.destination_geom::geography, $5)
-        and r.agency_kind = 'colectivo'
-      )
-      select
-        route_id,
-        short_name,
-        long_name,
-        agency_kind,
-        route_source_kind,
-        operator_name,
-        route_metadata,
-        shape_id,
-        shape_source_kind,
-        shape_metadata,
-        round(origin_walk_meters)::int as origin_walk_meters,
-        round(destination_walk_meters)::int as destination_walk_meters,
-        round(origin_walk_meters + destination_walk_meters)::int as total_walk_meters,
-        round(ST_Length(ST_LineSubstring(
-          (select geom from public.transit_shapes where id = candidates.shape_id),
-          LEAST(origin_fraction, destination_fraction),
-          GREATEST(origin_fraction, destination_fraction)
-        )::geography))::int as bus_distance_meters,
-        round(origin_walk_meters + destination_walk_meters + ST_Length(ST_LineSubstring(
-          (select geom from public.transit_shapes where id = candidates.shape_id),
-          LEAST(origin_fraction, destination_fraction),
-          GREATEST(origin_fraction, destination_fraction)
-        )::geography))::int as total_distance_meters,
-        origin_fraction,
-        destination_fraction,
-        ST_AsGeoJSON(boarding_geom)::json as boarding_point,
-        ST_AsGeoJSON(alighting_geom)::json as alighting_point
-      from candidates
-      order by total_walk_meters asc, bus_distance_meters asc
-      limit $6
-      `,
+    const rows = await this.dataSource.query<TransitBusSuggestionRow[]>(
+      TRANSIT_BUS_SUGGESTIONS_QUERY,
       [
         routeRequest.origin.longitude,
         routeRequest.origin.latitude,
@@ -420,14 +370,31 @@ export class TransitService {
         TRANSIT_BUS_SUGGESTION_WALKING_RADIUS_METERS,
         TRANSIT_BUS_SUGGESTION_CANDIDATE_LIMIT,
       ],
-    ) as TransitBusSuggestionRow[];
+    );
 
-    const walkingEstimateCache = new Map<string, Promise<TransitWalkingEstimate>>();
-    const suggestions = await Promise.all(rows.map((row) => this.toTransitBusSuggestion(row, routeRequest, walkingEstimateCache)));
+    const walkingEstimateCache = new Map<
+      string,
+      Promise<TransitWalkingEstimate>
+    >();
+    const suggestions = await Promise.all(
+      rows.map((row) =>
+        this.toTransitBusSuggestion(row, routeRequest, walkingEstimateCache),
+      ),
+    );
     const sortedSuggestions = suggestions
-      .sort((left, right) => left.durationSeconds - right.durationSeconds || left.totalDistanceMeters - right.totalDistanceMeters)
+      .sort(
+        (left, right) =>
+          left.durationSeconds - right.durationSeconds ||
+          left.totalDistanceMeters - right.totalDistanceMeters,
+      )
       .slice(0, TRANSIT_BUS_SUGGESTION_LIMIT)
-      .map((suggestion, index) => this.withTransitBusSuggestionPresentation(suggestion, routeRequest, index + 1));
+      .map((suggestion, index) =>
+        this.withTransitBusSuggestionPresentation(
+          suggestion,
+          routeRequest,
+          index + 1,
+        ),
+      );
 
     return {
       puntoA: routeRequest.origin,
@@ -439,189 +406,21 @@ export class TransitService {
       suggestions: sortedSuggestions,
       coverage: {
         hasSuggestions: sortedSuggestions.length > 0,
-        note: sortedSuggestions.length > 0
-          ? 'Opciones calculadas con rutas inyectadas y tiempos de caminata por OSRM cuando esta disponible.'
-          : 'No encontre una ruta directa cuya geometria pase cerca del origen y del destino dentro del radio configurado.',
+        note:
+          sortedSuggestions.length > 0
+            ? 'Opciones calculadas con rutas inyectadas y tiempos de caminata por OSRM cuando esta disponible.'
+            : 'No encontre una ruta directa cuya geometria pase cerca del origen y del destino dentro del radio configurado.',
       },
       generatedAtIso: new Date().toISOString(),
     };
   }
 
-  async getTransmetroSuggestions(routeRequest: TransitRouteRequestDto): Promise<TransitTransmetroSuggestionsResponse> {
+  async getTransmetroSuggestions(
+    routeRequest: TransitRouteRequestDto,
+  ): Promise<TransitTransmetroSuggestionsResponse> {
     this.assertSupportedMode(routeRequest.mode);
-    const rows = await this.dataSource.query(
-      `
-      with points as (
-        select
-          ST_SetSRID(ST_MakePoint($1, $2), 4326) as origin_geom,
-          ST_SetSRID(ST_MakePoint($3, $4), 4326) as destination_geom
-      ),
-      transmetro_shapes as (
-        select
-          r.id as route_id,
-          r.short_name,
-          r.long_name,
-          r.source_kind,
-          r.operator_name,
-          r.metadata as route_metadata,
-          s.id as shape_id,
-          s.geom
-        from public.transit_shapes s
-        inner join public.transit_routes r on r.id = s.route_id
-        where r.agency_kind = 'transmetro'
-        and coalesce((r.metadata->>'isCurrentlyOperatingOverride')::boolean, true) = true
-      ),
-      nearby_feeders as (
-        select
-          feeder.*,
-          boarding_stop.id as boarding_stop_id,
-          boarding_stop.name as boarding_stop_name,
-          boarding_stop.geom as boarding_stop_geom,
-          ST_Distance(boarding_stop.geom::geography, points.origin_geom::geography) as origin_walk_meters
-        from transmetro_shapes feeder
-        cross join points
-        join lateral (
-          select st.id, st.name, st.geom
-          from public.transit_stops st
-          where st.name ilike '%' || feeder.short_name || '%'
-          and ST_DWithin(st.geom::geography, feeder.geom::geography, $5)
-          and ST_DWithin(st.geom::geography, points.origin_geom::geography, $6)
-          order by ST_Distance(st.geom::geography, points.origin_geom::geography) asc
-          limit 1
-        ) boarding_stop on true
-        order by origin_walk_meters asc
-        limit 8
-      ),
-      nearby_trunks as (
-        select
-          trunk.*,
-          destination_stop.id as destination_stop_id,
-          destination_stop.name as destination_stop_name,
-          destination_stop.geom as destination_stop_geom,
-          ST_Distance(destination_stop.geom::geography, points.destination_geom::geography) as destination_walk_meters
-        from transmetro_shapes trunk
-        cross join points
-        join lateral (
-          select st.id, st.name, st.geom
-          from public.transit_stops st
-          where ST_DWithin(st.geom::geography, trunk.geom::geography, $5)
-          and ST_DWithin(st.geom::geography, points.destination_geom::geography, $6)
-          order by
-            case
-              when lower(st.name) like '%estadio%' or lower(st.name) like '%joaqu%' then 0
-              when lower(st.name) like '%estaci%' then 1
-              when lower(st.name) like '%portal%' then 2
-              when lower(st.name) like '%parada transmetro%' then 3
-              else 4
-            end asc,
-            ST_Distance(st.geom::geography, points.destination_geom::geography) asc
-          limit 1
-        ) destination_stop on true
-        order by destination_walk_meters asc
-        limit 10
-      ),
-      candidates as (
-        select
-          feeder.route_id as feeder_route_id,
-          feeder.short_name as feeder_short_name,
-          feeder.long_name as feeder_long_name,
-          feeder.source_kind as feeder_source_kind,
-          feeder.operator_name as feeder_operator_name,
-          feeder.route_metadata as feeder_route_metadata,
-          trunk.route_id as trunk_route_id,
-          trunk.short_name as trunk_short_name,
-          trunk.long_name as trunk_long_name,
-          trunk.source_kind as trunk_source_kind,
-          trunk.operator_name as trunk_operator_name,
-          trunk.route_metadata as trunk_route_metadata,
-          feeder.boarding_stop_id,
-          feeder.boarding_stop_name,
-          feeder.boarding_stop_geom,
-          transfer_stop.id as transfer_stop_id,
-          transfer_stop.name as transfer_stop_name,
-          transfer_stop.geom as transfer_stop_geom,
-          trunk.destination_stop_id,
-          trunk.destination_stop_name,
-          trunk.destination_stop_geom,
-          feeder.origin_walk_meters,
-          trunk.destination_walk_meters,
-          ST_LineLocatePoint(feeder.geom, ST_ClosestPoint(feeder.geom, feeder.boarding_stop_geom)) as feeder_board_fraction,
-          ST_LineLocatePoint(feeder.geom, ST_ClosestPoint(feeder.geom, transfer_stop.geom)) as feeder_transfer_fraction,
-          ST_LineLocatePoint(trunk.geom, ST_ClosestPoint(trunk.geom, transfer_stop.geom)) as trunk_transfer_fraction,
-          ST_LineLocatePoint(trunk.geom, ST_ClosestPoint(trunk.geom, trunk.destination_stop_geom)) as trunk_destination_fraction,
-          feeder.geom as feeder_geom,
-          trunk.geom as trunk_geom
-        from nearby_feeders feeder
-        join nearby_trunks trunk on trunk.route_id <> feeder.route_id
-        join lateral (
-          select st.id, st.name, st.geom
-          from public.transit_stops st
-          where ST_DWithin(st.geom::geography, feeder.geom::geography, $5)
-          and ST_DWithin(st.geom::geography, trunk.geom::geography, $5)
-          and (
-            lower(st.name) like '%estaci%'
-            or lower(st.name) like '%portal%'
-            or lower(st.name) like '%retorno%'
-            or lower(st.name) like '%transmetro%'
-          )
-          order by
-            case
-              when lower(st.name) like '%joe arroyo%' then 0
-              when lower(st.name) like '%estaci%' then 1
-              when lower(st.name) like '%portal%' then 2
-              else 3
-            end asc,
-            ST_Distance(st.geom::geography, feeder.geom::geography) + ST_Distance(st.geom::geography, trunk.geom::geography) asc
-          limit 1
-        ) transfer_stop on true
-      )
-      select
-        feeder_route_id,
-        feeder_short_name,
-        feeder_long_name,
-        feeder_source_kind,
-        feeder_operator_name,
-        feeder_route_metadata,
-        trunk_route_id,
-        trunk_short_name,
-        trunk_long_name,
-        trunk_source_kind,
-        trunk_operator_name,
-        trunk_route_metadata,
-        boarding_stop_id,
-        boarding_stop_name,
-        ST_AsGeoJSON(boarding_stop_geom)::json as boarding_stop_point,
-        transfer_stop_id,
-        transfer_stop_name,
-        ST_AsGeoJSON(transfer_stop_geom)::json as transfer_stop_point,
-        destination_stop_id,
-        destination_stop_name,
-        ST_AsGeoJSON(destination_stop_geom)::json as destination_stop_point,
-        round(origin_walk_meters)::int as origin_walk_meters,
-        round(destination_walk_meters)::int as destination_walk_meters,
-        round(ST_Length(ST_LineSubstring(
-          feeder_geom,
-          LEAST(feeder_board_fraction, feeder_transfer_fraction),
-          GREATEST(feeder_board_fraction, feeder_transfer_fraction)
-        )::geography))::int as feeder_distance_meters,
-        round(ST_Length(ST_LineSubstring(
-          trunk_geom,
-          LEAST(trunk_transfer_fraction, trunk_destination_fraction),
-          GREATEST(trunk_transfer_fraction, trunk_destination_fraction)
-        )::geography))::int as trunk_distance_meters
-      from candidates
-      order by
-        case
-          when feeder_board_fraction <= feeder_transfer_fraction
-          and trunk_transfer_fraction <= trunk_destination_fraction then 0
-          else 1
-        end asc,
-        origin_walk_meters asc,
-        destination_walk_meters asc,
-        feeder_distance_meters asc,
-        trunk_distance_meters asc
-      limit $7
-      `,
+    const rows = await this.dataSource.query<TransitTransmetroSuggestionRow[]>(
+      TRANSMETRO_SUGGESTIONS_QUERY,
       [
         routeRequest.origin.longitude,
         routeRequest.origin.latitude,
@@ -631,17 +430,30 @@ export class TransitService {
         TRANSMETRO_STOP_SEARCH_RADIUS_METERS,
         TRANSMETRO_SUGGESTION_CANDIDATE_LIMIT,
       ],
-    ) as TransitTransmetroSuggestionRow[];
+    );
 
-    const walkingEstimateCache = new Map<string, Promise<TransitWalkingEstimate>>();
-    const suggestions = await Promise.all(rows.map((row) => this.toTransmetroSuggestion(row, routeRequest, walkingEstimateCache)));
+    const walkingEstimateCache = new Map<
+      string,
+      Promise<TransitWalkingEstimate>
+    >();
+    const suggestions = await Promise.all(
+      rows.map((row) =>
+        this.toTransmetroSuggestion(row, routeRequest, walkingEstimateCache),
+      ),
+    );
     const sortedSuggestions = suggestions
-      .filter((suggestion) => suggestion.feederService.isCurrentlyOperating && suggestion.trunkService.isCurrentlyOperating)
-      .sort((left, right) =>
-        this.getTransmetroSuggestionPreferenceScore(left, routeRequest) -
-          this.getTransmetroSuggestionPreferenceScore(right, routeRequest) ||
-        left.durationSeconds - right.durationSeconds ||
-        left.totalDistanceMeters - right.totalDistanceMeters)
+      .filter(
+        (suggestion) =>
+          suggestion.feederService.isCurrentlyOperating &&
+          suggestion.trunkService.isCurrentlyOperating,
+      )
+      .sort(
+        (left, right) =>
+          this.getTransmetroSuggestionPreferenceScore(left, routeRequest) -
+            this.getTransmetroSuggestionPreferenceScore(right, routeRequest) ||
+          left.durationSeconds - right.durationSeconds ||
+          left.totalDistanceMeters - right.totalDistanceMeters,
+      )
       .slice(0, TRANSMETRO_SUGGESTION_LIMIT)
       .map((suggestion, index) => ({
         ...suggestion,
@@ -657,20 +469,27 @@ export class TransitService {
       searchRadiusMeters: TRANSMETRO_STOP_SEARCH_RADIUS_METERS,
       coverage: {
         hasSuggestions: sortedSuggestions.length > 0,
-        note: sortedSuggestions.length > 0
-          ? 'Opciones calculadas con servicios y paraderos/estaciones Transmetro inyectados.'
-          : 'No encontre una combinacion Transmetro con paraderos/estaciones cerca del origen y destino dentro del radio configurado.',
+        note:
+          sortedSuggestions.length > 0
+            ? 'Opciones calculadas con servicios y paraderos/estaciones Transmetro inyectados.'
+            : 'No encontre una combinacion Transmetro con paraderos/estaciones cerca del origen y destino dentro del radio configurado.',
       },
       generatedAtIso: new Date().toISOString(),
     };
   }
 
-  private async fetchOtpPlan(routeRequest: TransitRouteRequestDto): Promise<OtpPlanResponse> {
+  private async fetchOtpPlan(
+    routeRequest: TransitRouteRequestDto,
+  ): Promise<OtpPlanResponse> {
     const response = await fetch(this.getOtpPlanUrl(routeRequest));
-    const payload = await response.json() as OtpPlanResponse;
+    const payload = (await response.json()) as OtpPlanResponse;
 
     if (!response.ok) {
-      throw new ServiceUnavailableException(payload.error?.msg ?? payload.error?.message ?? 'OTP no esta disponible.');
+      throw new ServiceUnavailableException(
+        payload.error?.msg ??
+          payload.error?.message ??
+          'OTP no esta disponible.',
+      );
     }
 
     return payload;
@@ -681,27 +500,58 @@ export class TransitService {
     routeRequest: TransitRouteRequestDto,
     walkingEstimateCache?: Map<string, Promise<TransitWalkingEstimate>>,
   ): Promise<TransitBusSuggestion> {
-    const operatingStatus = this.getTransitOperatingStatus(row.route_metadata, this.getRouteRequestDate(routeRequest), row.short_name);
-    const boardingPoint = this.toTransitWaypoint(row.boarding_point, `Subir a ${row.short_name}`);
-    const alightingPoint = this.toTransitWaypoint(row.alighting_point, `Bajarse de ${row.short_name}`);
-    const originWalk = await this.getWalkingLegEstimate(routeRequest.origin, boardingPoint, Number(row.origin_walk_meters), walkingEstimateCache);
-    const destinationWalk = await this.getWalkingLegEstimate(alightingPoint, routeRequest.destination, Number(row.destination_walk_meters), walkingEstimateCache);
+    const operatingStatus = this.getTransitOperatingStatus(
+      row.route_metadata,
+      this.getRouteRequestDate(routeRequest),
+      row.short_name,
+    );
+    const boardingPoint = this.toTransitWaypoint(
+      row.boarding_point,
+      `Subir a ${row.short_name}`,
+    );
+    const alightingPoint = this.toTransitWaypoint(
+      row.alighting_point,
+      `Bajarse de ${row.short_name}`,
+    );
+    const originWalk = await this.getWalkingLegEstimate(
+      routeRequest.origin,
+      boardingPoint,
+      Number(row.origin_walk_meters),
+      walkingEstimateCache,
+    );
+    const destinationWalk = await this.getWalkingLegEstimate(
+      alightingPoint,
+      routeRequest.destination,
+      Number(row.destination_walk_meters),
+      walkingEstimateCache,
+    );
     const busDistanceMeters = Number(row.bus_distance_meters);
-    const busDurationSeconds = Math.round(busDistanceMeters / TRANSIT_BUS_AVERAGE_METERS_PER_SECOND);
-    const walkDurationSeconds = originWalk.durationSeconds + destinationWalk.durationSeconds;
-    const totalWalkMeters = originWalk.distanceMeters + destinationWalk.distanceMeters;
-    const streets = this.uniqueOrdered(this.toStringArray(row.shape_metadata?.streets));
-    const directionConfidence = Number(row.destination_fraction) >= Number(row.origin_fraction)
-      ? 'shape_order'
-      : 'reverse_or_loop_unknown';
-    const routeNote = streets.length > 0
-      ? undefined
-      : 'La fuente de esta ruta tiene geometria, pero no trae nombres de calles/carreras para el tramo de bus.';
-    const directionNote = directionConfidence === 'shape_order'
-      ? undefined
-      : 'La geometria no confirma sentido ida/vuelta; se usa como ruta directa por cercania a origen y destino.';
-    const includeOriginWalk = originWalk.distanceMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
-    const includeDestinationWalk = destinationWalk.distanceMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
+    const busDurationSeconds = Math.round(
+      busDistanceMeters / TRANSIT_BUS_AVERAGE_METERS_PER_SECOND,
+    );
+    const walkDurationSeconds =
+      originWalk.durationSeconds + destinationWalk.durationSeconds;
+    const totalWalkMeters =
+      originWalk.distanceMeters + destinationWalk.distanceMeters;
+    const streets = this.uniqueOrdered(
+      this.toStringArray(row.shape_metadata?.streets),
+    );
+    const directionConfidence =
+      Number(row.destination_fraction) >= Number(row.origin_fraction)
+        ? 'shape_order'
+        : 'reverse_or_loop_unknown';
+    const routeNote =
+      streets.length > 0
+        ? undefined
+        : 'La fuente de esta ruta tiene geometria, pero no trae nombres de calles/carreras para el tramo de bus.';
+    const directionNote =
+      directionConfidence === 'shape_order'
+        ? undefined
+        : 'La geometria no confirma sentido ida/vuelta; se usa como ruta directa por cercania a origen y destino.';
+    const includeOriginWalk =
+      originWalk.distanceMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
+    const includeDestinationWalk =
+      destinationWalk.distanceMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
     const steps: TransitBusSuggestionStep[] = [];
 
     if (includeOriginWalk) {
@@ -719,15 +569,20 @@ export class TransitService {
     }
 
     steps.push({
-        type: 'bus' as const,
-        instruction: this.getBusInstruction(row.short_name, row.operator_name, includeOriginWalk, includeDestinationWalk),
-        distanceMeters: busDistanceMeters,
-        routeShortName: row.short_name,
-        operatorName: row.operator_name ?? undefined,
-        from: includeOriginWalk ? boardingPoint : routeRequest.origin,
-        to: includeDestinationWalk ? alightingPoint : routeRequest.destination,
-        streets,
-      });
+      type: 'bus' as const,
+      instruction: this.getBusInstruction(
+        row.short_name,
+        row.operator_name,
+        includeOriginWalk,
+        includeDestinationWalk,
+      ),
+      distanceMeters: busDistanceMeters,
+      routeShortName: row.short_name,
+      operatorName: row.operator_name ?? undefined,
+      from: includeOriginWalk ? boardingPoint : routeRequest.origin,
+      to: includeDestinationWalk ? alightingPoint : routeRequest.destination,
+      streets,
+    });
 
     if (includeDestinationWalk) {
       steps.push({
@@ -767,7 +622,9 @@ export class TransitService {
       routeStreets: streets,
       directionConfidence,
       steps,
-      notes: [routeNote, directionNote].filter((note): note is string => Boolean(note)),
+      notes: [routeNote, directionNote].filter((note): note is string =>
+        Boolean(note),
+      ),
     };
   }
 
@@ -782,7 +639,10 @@ export class TransitService {
       ...suggestion,
       optionNumber,
       title,
-      seleccion: this.getTransitBusSuggestionSelection(suggestion, routeRequest),
+      seleccion: this.getTransitBusSuggestionSelection(
+        suggestion,
+        routeRequest,
+      ),
     };
   }
 
@@ -790,14 +650,24 @@ export class TransitService {
     suggestion: TransitBusSuggestion,
     routeRequest: TransitRouteRequestDto,
   ): TransitBusSuggestionSelection {
-    const includeOriginWalk = suggestion.originWalkMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
-    const includeDestinationWalk = suggestion.destinationWalkMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
+    const includeOriginWalk =
+      suggestion.originWalkMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
+    const includeDestinationWalk =
+      suggestion.destinationWalkMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
     const routeName = suggestion.route.shortName;
     const operatorName = suggestion.route.operatorName;
-    const boardPlace = includeOriginWalk ? suggestion.boardingPoint : routeRequest.origin;
-    const alightPlace = includeDestinationWalk ? suggestion.alightingPoint : routeRequest.destination;
-    const walkToBoardingStep = suggestion.steps.find((step) => step.type === 'walk_to_boarding');
-    const walkToDestinationStep = suggestion.steps.find((step) => step.type === 'walk_to_destination');
+    const boardPlace = includeOriginWalk
+      ? suggestion.boardingPoint
+      : routeRequest.origin;
+    const alightPlace = includeDestinationWalk
+      ? suggestion.alightingPoint
+      : routeRequest.destination;
+    const walkToBoardingStep = suggestion.steps.find(
+      (step) => step.type === 'walk_to_boarding',
+    );
+    const walkToDestinationStep = suggestion.steps.find(
+      (step) => step.type === 'walk_to_destination',
+    );
 
     const pasos: TransitBusSuggestionSelectionStep[] = [];
 
@@ -857,22 +727,57 @@ export class TransitService {
     walkingEstimateCache?: Map<string, Promise<TransitWalkingEstimate>>,
   ): Promise<TransitTransmetroSuggestion> {
     const operatingDate = this.getRouteRequestDate(routeRequest);
-    const feederOperatingStatus = this.getTransitOperatingStatus(row.feeder_route_metadata, operatingDate, row.feeder_short_name);
-    const trunkOperatingStatus = this.getTransitOperatingStatus(row.trunk_route_metadata, operatingDate, row.trunk_short_name);
-    const boardingStop = this.toTransitWaypoint(row.boarding_stop_point, row.boarding_stop_name);
-    const transferStation = this.toTransitWaypoint(row.transfer_stop_point, row.transfer_stop_name);
-    const destinationStation = this.toTransitWaypoint(row.destination_stop_point, row.destination_stop_name);
-    const originWalk = await this.getWalkingLegEstimate(routeRequest.origin, boardingStop, Number(row.origin_walk_meters), walkingEstimateCache);
-    const destinationWalk = await this.getWalkingLegEstimate(destinationStation, routeRequest.destination, Number(row.destination_walk_meters), walkingEstimateCache);
+    const feederOperatingStatus = this.getTransitOperatingStatus(
+      row.feeder_route_metadata,
+      operatingDate,
+      row.feeder_short_name,
+    );
+    const trunkOperatingStatus = this.getTransitOperatingStatus(
+      row.trunk_route_metadata,
+      operatingDate,
+      row.trunk_short_name,
+    );
+    const boardingStop = this.toTransitWaypoint(
+      row.boarding_stop_point,
+      row.boarding_stop_name,
+    );
+    const transferStation = this.toTransitWaypoint(
+      row.transfer_stop_point,
+      row.transfer_stop_name,
+    );
+    const destinationStation = this.toTransitWaypoint(
+      row.destination_stop_point,
+      row.destination_stop_name,
+    );
+    const originWalk = await this.getWalkingLegEstimate(
+      routeRequest.origin,
+      boardingStop,
+      Number(row.origin_walk_meters),
+      walkingEstimateCache,
+    );
+    const destinationWalk = await this.getWalkingLegEstimate(
+      destinationStation,
+      routeRequest.destination,
+      Number(row.destination_walk_meters),
+      walkingEstimateCache,
+    );
     const transferWalkMeters = 0;
     const feederDistanceMeters = Number(row.feeder_distance_meters);
     const trunkDistanceMeters = Number(row.trunk_distance_meters);
     const transitDistanceMeters = feederDistanceMeters + trunkDistanceMeters;
-    const transitDurationSeconds = Math.round(transitDistanceMeters / TRANSMETRO_AVERAGE_METERS_PER_SECOND);
-    const walkDurationSeconds = originWalk.durationSeconds + destinationWalk.durationSeconds;
-    const totalWalkMeters = originWalk.distanceMeters + destinationWalk.distanceMeters + transferWalkMeters;
-    const includeOriginWalk = originWalk.distanceMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
-    const includeDestinationWalk = destinationWalk.distanceMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
+    const transitDurationSeconds = Math.round(
+      transitDistanceMeters / TRANSMETRO_AVERAGE_METERS_PER_SECOND,
+    );
+    const walkDurationSeconds =
+      originWalk.durationSeconds + destinationWalk.durationSeconds;
+    const totalWalkMeters =
+      originWalk.distanceMeters +
+      destinationWalk.distanceMeters +
+      transferWalkMeters;
+    const includeOriginWalk =
+      originWalk.distanceMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
+    const includeDestinationWalk =
+      destinationWalk.distanceMeters > TRANSIT_DIRECT_ACCESS_THRESHOLD_METERS;
     const steps: TransitTransmetroSuggestionStep[] = [];
 
     if (includeOriginWalk) {
@@ -923,7 +828,9 @@ export class TransitService {
         : `Bajate en el Punto B; esta opcion te deja practicamente en la puerta.`,
       serviceShortName: row.trunk_short_name,
       serviceLongName: row.trunk_long_name ?? undefined,
-      place: includeDestinationWalk ? destinationStation : routeRequest.destination,
+      place: includeDestinationWalk
+        ? destinationStation
+        : routeRequest.destination,
     });
 
     if (includeDestinationWalk) {
@@ -989,15 +896,24 @@ export class TransitService {
     routeRequest: TransitRouteRequestDto,
   ): number {
     const originLabel = this.normalizeText(routeRequest.origin.label ?? '');
-    const feederText = this.normalizeText([
-      suggestion.feederService.shortName,
-      suggestion.feederService.longName,
-      suggestion.feederService.operatorName,
-    ].filter(Boolean).join(' '));
-    const originWords = originLabel.split(/\s+/).filter((word) => word.length >= 5);
-    const matchesOriginName = originWords.some((word) => feederText.includes(word));
+    const feederText = this.normalizeText(
+      [
+        suggestion.feederService.shortName,
+        suggestion.feederService.longName,
+        suggestion.feederService.operatorName,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+    const originWords = originLabel
+      .split(/\s+/)
+      .filter((word) => word.length >= 5);
+    const matchesOriginName = originWords.some((word) =>
+      feederText.includes(word),
+    );
     const trunkName = suggestion.trunkService.shortName;
-    const isVerboseDirectionalBus = trunkName.toLowerCase().startsWith('bus ') || trunkName.includes(':');
+    const isVerboseDirectionalBus =
+      trunkName.toLowerCase().startsWith('bus ') || trunkName.includes(':');
 
     return (
       (matchesOriginName ? -1_000 : 0) +
@@ -1018,7 +934,11 @@ export class TransitService {
       return cache.get(cacheKey)!;
     }
 
-    const estimatePromise = this.resolveWalkingLegEstimate(from, to, fallbackDistanceMeters);
+    const estimatePromise = this.resolveWalkingLegEstimate(
+      from,
+      to,
+      fallbackDistanceMeters,
+    );
     cache?.set(cacheKey, estimatePromise);
 
     return estimatePromise;
@@ -1037,7 +957,9 @@ export class TransitService {
 
     return {
       distanceMeters: Math.round(fallbackDistanceMeters),
-      durationSeconds: Math.round(fallbackDistanceMeters / TRANSIT_WALKING_AVERAGE_METERS_PER_SECOND),
+      durationSeconds: Math.round(
+        fallbackDistanceMeters / TRANSIT_WALKING_AVERAGE_METERS_PER_SECOND,
+      ),
       streets: [],
     };
   }
@@ -1049,7 +971,7 @@ export class TransitService {
     for (const baseUrl of this.getOsrmWalkingBaseUrls()) {
       try {
         const response = await fetch(this.getOsrmWalkingUrl(baseUrl, from, to));
-        const payload = await response.json() as OsrmWalkingResponse;
+        const payload = (await response.json()) as OsrmWalkingResponse;
         const route = payload.routes?.[0];
 
         if (response.ok && payload.code === 'Ok' && route) {
@@ -1067,7 +989,10 @@ export class TransitService {
     return null;
   }
 
-  private getWalkingEstimateCacheKey(from: TransitWaypoint, to: TransitWaypoint): string {
+  private getWalkingEstimateCacheKey(
+    from: TransitWaypoint,
+    to: TransitWaypoint,
+  ): string {
     return [
       from.latitude.toFixed(6),
       from.longitude.toFixed(6),
@@ -1076,7 +1001,9 @@ export class TransitService {
     ].join(',');
   }
 
-  private getOsrmStepStreets(route: NonNullable<OsrmWalkingResponse['routes']>[number]): string[] {
+  private getOsrmStepStreets(
+    route: NonNullable<OsrmWalkingResponse['routes']>[number],
+  ): string[] {
     const names = route.legs
       ?.flatMap((leg) => leg.steps ?? [])
       .map((step) => step.name || step.ref)
@@ -1085,7 +1012,10 @@ export class TransitService {
     return this.uniqueOrdered(names ?? []);
   }
 
-  private getWalkingInstruction(baseInstruction: string, streets: string[]): string {
+  private getWalkingInstruction(
+    baseInstruction: string,
+    streets: string[],
+  ): string {
     if (streets.length === 0) {
       return baseInstruction;
     }
@@ -1133,21 +1063,28 @@ export class TransitService {
   }
 
   private getOsrmWalkingBaseUrls(): string[] {
-    return this.uniqueOrdered([
-      this.configService.get<string>('OSRM_WALKING_BASE_URL') ?? '',
-      'http://host.docker.internal:5001',
-      'http://localhost:5001',
-    ].filter(Boolean));
+    return this.uniqueOrdered(
+      [
+        this.configService.get<string>('OSRM_WALKING_BASE_URL') ?? '',
+        'http://host.docker.internal:5001',
+        'http://localhost:5001',
+      ].filter(Boolean),
+    );
   }
 
-  private getOsrmWalkingUrl(baseUrl: string, from: TransitWaypoint, to: TransitWaypoint): string {
+  private getOsrmWalkingUrl(
+    baseUrl: string,
+    from: TransitWaypoint,
+    to: TransitWaypoint,
+  ): string {
     const origin = `${from.longitude},${from.latitude}`;
     const destination = `${to.longitude},${to.latitude}`;
     return `${baseUrl}/route/v1/walking/${origin};${destination}?overview=false&steps=true&alternatives=false`;
   }
 
   private getOtpPlanUrl(routeRequest: TransitRouteRequestDto): string {
-    const baseUrl = this.configService.get<string>('OTP_PLAN_BASE_URL') ??
+    const baseUrl =
+      this.configService.get<string>('OTP_PLAN_BASE_URL') ??
       'http://localhost:8080/otp/routers/default/plan';
     const params = new URLSearchParams({
       fromPlace: `${routeRequest.origin.latitude},${routeRequest.origin.longitude}`,
@@ -1167,13 +1104,21 @@ export class TransitService {
   }
 
   private toTransitItinerary(
-    otpItinerary: NonNullable<NonNullable<OtpPlanResponse['plan']>['itineraries']>[number],
+    otpItinerary: NonNullable<
+      NonNullable<OtpPlanResponse['plan']>['itineraries']
+    >[number],
     index: number,
     routeRequest: TransitRouteRequestDto,
   ): TransitItinerary {
-    const legs = (otpItinerary.legs ?? []).map((leg, legIndex) => this.toTransitLeg(leg, legIndex));
-    const durationSeconds = Math.round(otpItinerary.duration ?? this.sum(legs.map((leg) => leg.durationSeconds)));
-    const distanceMeters = Math.round(this.sum(legs.map((leg) => leg.distanceMeters)));
+    const legs = (otpItinerary.legs ?? []).map((leg, legIndex) =>
+      this.toTransitLeg(leg, legIndex),
+    );
+    const durationSeconds = Math.round(
+      otpItinerary.duration ?? this.sum(legs.map((leg) => leg.durationSeconds)),
+    );
+    const distanceMeters = Math.round(
+      this.sum(legs.map((leg) => leg.distanceMeters)),
+    );
 
     return {
       id: `otp-itinerary-${index}`,
@@ -1191,7 +1136,11 @@ export class TransitService {
   }
 
   private toTransitLeg(
-    leg: NonNullable<NonNullable<NonNullable<OtpPlanResponse['plan']>['itineraries']>[number]['legs']>[number],
+    leg: NonNullable<
+      NonNullable<
+        NonNullable<OtpPlanResponse['plan']>['itineraries']
+      >[number]['legs']
+    >[number],
     index: number,
   ): TransitLeg {
     const from = this.toWaypoint(leg.from);
@@ -1215,8 +1164,12 @@ export class TransitService {
     };
   }
 
-  private async getActiveStreamAlerts(itinerary: TransitItinerary): Promise<TransitAlert[]> {
-    const rows = await Promise.all(itinerary.legs.map((leg) => this.findActiveStreams(leg.geometry)));
+  private async getActiveStreamAlerts(
+    itinerary: TransitItinerary,
+  ): Promise<TransitAlert[]> {
+    const rows = await Promise.all(
+      itinerary.legs.map((leg) => this.findActiveStreams(leg.geometry)),
+    );
     return rows.flat().map((stream) => ({
       id: stream.id,
       type: 'active_stream',
@@ -1226,12 +1179,14 @@ export class TransitService {
     }));
   }
 
-  private async findActiveStreams(geometry: TransitCoordinate[]): Promise<ActiveStreamHit[]> {
+  private async findActiveStreams(
+    geometry: TransitCoordinate[],
+  ): Promise<ActiveStreamHit[]> {
     if (geometry.length < 2) {
       return [];
     }
 
-    return this.reportRepository.query(
+    return this.reportRepository.query<ActiveStreamHit[]>(
       `
       select id, description
       from report
@@ -1249,10 +1204,14 @@ export class TransitService {
         JSON.stringify(this.toLineString(geometry)),
         ACTIVE_STREAM_BUFFER_METERS,
       ],
-    ) as Promise<ActiveStreamHit[]>;
+    );
   }
 
-  private getLegGeometry(encodedGeometry: string | undefined, from: TransitWaypoint, to: TransitWaypoint): TransitCoordinate[] {
+  private getLegGeometry(
+    encodedGeometry: string | undefined,
+    from: TransitWaypoint,
+    to: TransitWaypoint,
+  ): TransitCoordinate[] {
     if (!encodedGeometry) {
       return [from, to];
     }
@@ -1275,13 +1234,19 @@ export class TransitService {
       index = lngResult.nextIndex;
       latitude += latResult.delta;
       longitude += lngResult.delta;
-      coordinates.push({ latitude: latitude / factor, longitude: longitude / factor });
+      coordinates.push({
+        latitude: latitude / factor,
+        longitude: longitude / factor,
+      });
     }
 
     return coordinates;
   }
 
-  private decodeChunk(shape: string, startIndex: number): { delta: number; nextIndex: number } {
+  private decodeChunk(
+    shape: string,
+    startIndex: number,
+  ): { delta: number; nextIndex: number } {
     let result = 0;
     let shift = 0;
     let index = startIndex;
@@ -1294,10 +1259,17 @@ export class TransitService {
       shift += 5;
     } while (byte >= 0x20);
 
-    return { delta: result & 1 ? ~(result >> 1) : result >> 1, nextIndex: index };
+    return {
+      delta: result & 1 ? ~(result >> 1) : result >> 1,
+      nextIndex: index,
+    };
   }
 
-  private toWaypoint(point: { name?: string; lat: number; lon: number }): TransitWaypoint {
+  private toWaypoint(point: {
+    name?: string;
+    lat: number;
+    lon: number;
+  }): TransitWaypoint {
     return {
       latitude: point.lat,
       longitude: point.lon,
@@ -1305,7 +1277,10 @@ export class TransitService {
     };
   }
 
-  private toTransitWaypoint(point: { coordinates: [number, number] }, label: string): TransitWaypoint {
+  private toTransitWaypoint(
+    point: { coordinates: [number, number] },
+    label: string,
+  ): TransitWaypoint {
     return {
       latitude: point.coordinates[1],
       longitude: point.coordinates[0],
@@ -1318,8 +1293,12 @@ export class TransitService {
     return mode.toUpperCase() === 'BUS' ? 'bus' : 'transfer';
   }
 
-  private toAgencyKind(agencyName: string | undefined): TransitLeg['agencyKind'] {
-    return agencyName?.toLowerCase().includes('transmetro') ? 'transmetro' : 'colectivo';
+  private toAgencyKind(
+    agencyName: string | undefined,
+  ): TransitLeg['agencyKind'] {
+    return agencyName?.toLowerCase().includes('transmetro')
+      ? 'transmetro'
+      : 'colectivo';
   }
 
   private countTransfers(legs: TransitLeg[]): number {
@@ -1373,7 +1352,10 @@ export class TransitService {
   }
 
   private getSourceVersion(): string {
-    return this.configService.get<string>('TRANSIT_SOURCE_VERSION') ?? 'quilla-gtfs-draft';
+    return (
+      this.configService.get<string>('TRANSIT_SOURCE_VERSION') ??
+      'quilla-gtfs-draft'
+    );
   }
 
   private getTransitMapColor(
@@ -1392,11 +1374,19 @@ export class TransitService {
     now = new Date(),
     routeShortName?: string,
   ): TransitOperatingStatus {
-    const inferredExpressCondition = this.isTransmetroExpressRoute(routeShortName) ? 'peak_hours' : undefined;
-    const condition = metadata?.operatingCondition ?? inferredExpressCondition ?? 'always';
+    const inferredExpressCondition = this.isTransmetroExpressRoute(
+      routeShortName,
+    )
+      ? 'peak_hours'
+      : undefined;
+    const condition =
+      metadata?.operatingCondition ?? inferredExpressCondition ?? 'always';
     const label = metadata?.operatingConditionLabel;
 
-    if (metadata?.isCurrentlyOperatingOverride === false || condition === 'temporarily_suspended') {
+    if (
+      metadata?.isCurrentlyOperatingOverride === false ||
+      condition === 'temporarily_suspended'
+    ) {
       return {
         isCurrentlyOperating: false,
         operatingCondition: 'temporarily_suspended',
@@ -1426,9 +1416,13 @@ export class TransitService {
 
     if (condition === 'peak_hours') {
       return {
-        isCurrentlyOperating: this.isWithinPeakHours(now, metadata?.peakHours ?? DEFAULT_TRANSMETRO_EXPRESS_PEAK_HOURS),
+        isCurrentlyOperating: this.isWithinPeakHours(
+          now,
+          metadata?.peakHours ?? DEFAULT_TRANSMETRO_EXPRESS_PEAK_HOURS,
+        ),
         operatingCondition: condition,
-        operatingConditionLabel: label ?? 'Ruta expresa: opera solo en horas pico configuradas.',
+        operatingConditionLabel:
+          label ?? 'Ruta expresa: opera solo en horas pico configuradas.',
       };
     }
 
@@ -1465,7 +1459,10 @@ export class TransitService {
   ): boolean {
     const localDate = this.getLocalDateParts(date);
 
-    if (peakHours.weekdaysOnly !== false && (localDate.weekday === 0 || localDate.weekday === 6)) {
+    if (
+      peakHours.weekdaysOnly !== false &&
+      (localDate.weekday === 0 || localDate.weekday === 6)
+    ) {
       return false;
     }
 
@@ -1487,7 +1484,11 @@ export class TransitService {
     });
   }
 
-  private getLocalDateParts(date: Date): { weekday: number; hour: number; minute: number } {
+  private getLocalDateParts(date: Date): {
+    weekday: number;
+    hour: number;
+    minute: number;
+  } {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: COLOMBIA_TIME_ZONE,
       weekday: 'short',
@@ -1504,7 +1505,8 @@ export class TransitService {
       Fri: 5,
       Sat: 6,
     };
-    const getPart = (type: string) => parts.find((part) => part.type === type)?.value;
+    const getPart = (type: string) =>
+      parts.find((part) => part.type === type)?.value;
 
     return {
       weekday: weekdayMap[getPart('weekday') ?? 'Sun'] ?? 0,
@@ -1534,7 +1536,11 @@ export class TransitService {
     return date.getDay() === 0 || date.getDay() === 6;
   }
 
-  private isWithinAnnualWindow(date: Date, startsOn: string, endsOn: string): boolean {
+  private isWithinAnnualWindow(
+    date: Date,
+    startsOn: string,
+    endsOn: string,
+  ): boolean {
     const current = this.toMonthDayNumber(date);
     const start = this.parseMonthDay(startsOn);
     const end = this.parseMonthDay(endsOn);
@@ -1573,7 +1579,9 @@ export class TransitService {
 
   private assertSupportedMode(mode: TransitMode): void {
     if (mode !== TransitMode.PEATON && mode !== TransitMode.TURISTA) {
-      throw new BadRequestException('Transit solo esta disponible para modos peaton y turista.');
+      throw new BadRequestException(
+        'Transit solo esta disponible para modos peaton y turista.',
+      );
     }
   }
 

@@ -3,4 +3,5 @@ export enum RestrictionType {
   PARRILLERO_HOMBRE = 'parrillero_hombre',
   RESTRICCION_NOCTURNA = 'restriccion_nocturna',
   ZONA_PROHIBIDA = 'zona_prohibida',
+  RIESGO_CIVIL = 'riesgo_civil',
 }

@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,7 +13,11 @@ import { VehicleType } from '@/features/profiles/entities/vehicle_type.enum';
 import { RestrictionType } from '@/features/zones/enums/restriction-type.enum';
 import { Zone } from '@/features/zones/entities/zone.entity';
 import { ZonesService } from '@/features/zones/zones.service';
-import { NavigationMode, RouteRequestDto } from '@/features/navigation/dto/route-request.dto';
+import {
+  NavigationMode,
+  RouteRequestDto,
+} from '@/features/navigation/dto/route-request.dto';
+import { THERMAL_COMFORT_QUERY } from '@/features/thermal-comfort/queries/thermal-comfort.query';
 import type {
   RouteAlert,
   RouteAlternativeSummary,
@@ -134,15 +142,22 @@ export class NavigationService {
     private readonly configService: ConfigService,
     private readonly zonesService: ZonesService,
     @InjectRepository(Zone) private readonly zoneRepository: Repository<Zone>,
-    @InjectRepository(Report) private readonly reportRepository: Repository<Report>,
+    @InjectRepository(Report)
+    private readonly reportRepository: Repository<Report>,
   ) {}
 
   async calculateRoute(routeRequest: RouteRequestDto): Promise<RouteResponse> {
     this.assertRequestWithinAmb(routeRequest);
     const candidates = await this.fetchRouteCandidates(routeRequest);
-    const assessed = await Promise.all(candidates.map((candidate) => this.assessRoute(candidate, routeRequest)));
-    const legalRoutes = assessed.filter((candidate) => !candidate.risk.isLegalBlocked);
-    const safeRoutes = legalRoutes.filter((candidate) => !candidate.risk.hasRisk);
+    const assessed = await Promise.all(
+      candidates.map((candidate) => this.assessRoute(candidate, routeRequest)),
+    );
+    const legalRoutes = assessed.filter(
+      (candidate) => !candidate.risk.isLegalBlocked,
+    );
+    const safeRoutes = legalRoutes.filter(
+      (candidate) => !candidate.risk.hasRisk,
+    );
 
     if (safeRoutes.length > 0) {
       const bestRoute = this.pickBestRoute(safeRoutes);
@@ -151,22 +166,35 @@ export class NavigationService {
 
     if (legalRoutes.length > 0) {
       const bestRouteWithAlerts = this.pickBestRoute(legalRoutes);
-      return this.toResponse(bestRouteWithAlerts, assessed[0].route !== bestRouteWithAlerts);
+      return this.toResponse(
+        bestRouteWithAlerts,
+        assessed[0].route !== bestRouteWithAlerts,
+      );
     }
 
-    throw new BadRequestException('La placa o el tipo de vehiculo violan una restriccion activa.');
+    throw new BadRequestException(
+      'La placa o el tipo de vehiculo violan una restriccion activa.',
+    );
   }
 
-  private async assessRoute(route: RouteCandidate, routeRequest: RouteRequestDto) {
+  private async assessRoute(
+    route: RouteCandidate,
+    routeRequest: RouteRequestDto,
+  ) {
     const risk = await this.getRiskAssessment(route, routeRequest);
     const penalty = risk.hasRisk ? INFINITE_PENALTY_SECONDS : 0;
-    const score = route.durationSeconds + penalty - route.shadeScore - route.touristScore;
+    const score =
+      route.durationSeconds + penalty - route.shadeScore - route.touristScore;
 
     return { route: { ...route, alerts: risk.alerts }, risk, score };
   }
 
   private pickBestRoute(
-    routes: Array<{ route: RouteCandidate; risk: RouteRiskAssessment; score: number }>
+    routes: Array<{
+      route: RouteCandidate;
+      risk: RouteRiskAssessment;
+      score: number;
+    }>,
   ): RouteCandidate {
     return [...routes].sort((left, right) => left.score - right.score)[0].route;
   }
@@ -188,22 +216,35 @@ export class NavigationService {
     };
   }
 
-  private async fetchRouteCandidates(routeRequest: RouteRequestDto): Promise<RouteCandidate[]> {
+  private async fetchRouteCandidates(
+    routeRequest: RouteRequestDto,
+  ): Promise<RouteCandidate[]> {
     const provider = this.getProvider(routeRequest);
-    const routes = provider === 'osrm'
-      ? await this.fetchOsrmRoutes(routeRequest)
-      : provider === 'tomtom'
-        ? await this.fetchTomTomRoutes(routeRequest)
-        : await this.fetchValhallaRoutes(routeRequest);
+    const routes =
+      provider === 'osrm'
+        ? await this.fetchOsrmRoutes(routeRequest)
+        : provider === 'tomtom'
+          ? await this.fetchTomTomRoutes(routeRequest)
+          : await this.fetchValhallaRoutes(routeRequest);
 
-    if (routes.length === 0) throw new ServiceUnavailableException('El motor de rutas no devolvio alternativas.');
-    return Promise.all(routes.map((route) => this.withModeScores(route, routeRequest)));
+    if (routes.length === 0)
+      throw new ServiceUnavailableException(
+        'El motor de rutas no devolvio alternativas.',
+      );
+    return Promise.all(
+      routes.map((route) => this.withModeScores(route, routeRequest)),
+    );
   }
 
   private getProvider(routeRequest: RouteRequestDto): RouteEngineProvider {
-    const configuredProvider = this.configService.get<RouteEngineProvider>('ROUTING_ENGINE_PROVIDER');
+    const configuredProvider = this.configService.get<RouteEngineProvider>(
+      'ROUTING_ENGINE_PROVIDER',
+    );
 
-    if (configuredProvider === 'tomtom' && this.isWalkingMode(routeRequest.mode)) {
+    if (
+      configuredProvider === 'tomtom' &&
+      this.isWalkingMode(routeRequest.mode)
+    ) {
       return 'osrm';
     }
 
@@ -214,20 +255,31 @@ export class NavigationService {
     return this.shouldUseTomTomTraffic(routeRequest.mode) ? 'tomtom' : 'osrm';
   }
 
-  private async fetchOsrmRoutes(routeRequest: RouteRequestDto): Promise<RouteCandidate[]> {
+  private async fetchOsrmRoutes(
+    routeRequest: RouteRequestDto,
+  ): Promise<RouteCandidate[]> {
     const response = await fetch(this.getOsrmUrl(routeRequest));
-    const payload = await response.json() as OsrmResponse;
+    const payload = (await response.json()) as OsrmResponse;
 
-    if (!response.ok || payload.code !== 'Ok') throw new ServiceUnavailableException(payload.message);
+    if (!response.ok || payload.code !== 'Ok')
+      throw new ServiceUnavailableException(payload.message);
     const routes = payload.routes ?? [];
-    return routes.map((route, index) => this.fromOsrmRoute(route, index, routes));
+    return routes.map((route, index) =>
+      this.fromOsrmRoute(route, index, routes),
+    );
   }
 
-  private async fetchValhallaRoutes(routeRequest: RouteRequestDto): Promise<RouteCandidate[]> {
-    const response = await fetch(this.getValhallaUrl(), this.getValhallaRequest(routeRequest));
-    const payload = await response.json() as ValhallaResponse;
+  private async fetchValhallaRoutes(
+    routeRequest: RouteRequestDto,
+  ): Promise<RouteCandidate[]> {
+    const response = await fetch(
+      this.getValhallaUrl(),
+      this.getValhallaRequest(routeRequest),
+    );
+    const payload = (await response.json()) as ValhallaResponse;
 
-    if (!response.ok) throw new ServiceUnavailableException('Valhalla no esta disponible.');
+    if (!response.ok)
+      throw new ServiceUnavailableException('Valhalla no esta disponible.');
     if (!payload.trip || payload.trip.status !== 0) {
       throw new ServiceUnavailableException(payload.trip?.status_message);
     }
@@ -235,14 +287,19 @@ export class NavigationService {
     return [this.fromValhallaRoute(payload)];
   }
 
-  private async fetchTomTomRoutes(routeRequest: RouteRequestDto): Promise<RouteCandidate[]> {
+  private async fetchTomTomRoutes(
+    routeRequest: RouteRequestDto,
+  ): Promise<RouteCandidate[]> {
     const apiKey = this.getTomTomApiKey();
     const response = await fetch(this.getTomTomUrl(routeRequest, apiKey));
-    const payload = await response.json() as TomTomResponse;
+    const payload = (await response.json()) as TomTomResponse;
 
-    if (!response.ok) throw new ServiceUnavailableException('TomTom no esta disponible.');
+    if (!response.ok)
+      throw new ServiceUnavailableException('TomTom no esta disponible.');
     const routes = payload.routes ?? [];
-    return routes.map((route, index) => this.fromTomTomRoute(route, index, routes));
+    return routes.map((route, index) =>
+      this.fromTomTomRoute(route, index, routes),
+    );
   }
 
   private getOsrmUrl(routeRequest: RouteRequestDto): string {
@@ -255,12 +312,17 @@ export class NavigationService {
 
   private getOsrmBaseUrl(mode: NavigationMode): string {
     if (this.isWalkingMode(mode)) {
-      return this.configService.get<string>('OSRM_WALKING_BASE_URL') ?? 'http://localhost:5001';
+      return (
+        this.configService.get<string>('OSRM_WALKING_BASE_URL') ??
+        'http://localhost:5001'
+      );
     }
 
-    return this.configService.get<string>('OSRM_DRIVING_BASE_URL') ??
+    return (
+      this.configService.get<string>('OSRM_DRIVING_BASE_URL') ??
       this.configService.get<string>('OSRM_BASE_URL') ??
-      'http://localhost:5000';
+      'http://localhost:5000'
+    );
   }
 
   private getOsrmProfile(mode: NavigationMode): 'walking' | 'driving' {
@@ -268,7 +330,9 @@ export class NavigationService {
   }
 
   private getValhallaUrl(): string {
-    const baseUrl = this.configService.get<string>('VALHALLA_BASE_URL') ?? 'http://localhost:8002';
+    const baseUrl =
+      this.configService.get<string>('VALHALLA_BASE_URL') ??
+      'http://localhost:8002';
     return `${baseUrl}/route`;
   }
 
@@ -284,7 +348,9 @@ export class NavigationService {
   }
 
   private getTomTomUrl(routeRequest: RouteRequestDto, apiKey: string): string {
-    const baseUrl = this.configService.get<string>('TOMTOM_ROUTING_BASE_URL') ?? 'https://api.tomtom.com';
+    const baseUrl =
+      this.configService.get<string>('TOMTOM_ROUTING_BASE_URL') ??
+      'https://api.tomtom.com';
     const origin = `${routeRequest.origin.latitude},${routeRequest.origin.longitude}`;
     const destination = `${routeRequest.destination.latitude},${routeRequest.destination.longitude}`;
     const params = new URLSearchParams({
@@ -306,22 +372,33 @@ export class NavigationService {
     const apiKey = this.configService.get<string>('TOMTOM_API_KEY')?.trim();
 
     if (!apiKey) {
-      throw new ServiceUnavailableException('TOMTOM_API_KEY no esta configurada.');
+      throw new ServiceUnavailableException(
+        'TOMTOM_API_KEY no esta configurada.',
+      );
     }
 
     return apiKey;
   }
 
-  private fromOsrmRoute(route: OsrmRoute, index = 0, alternatives: OsrmRoute[] = [route]): RouteCandidate {
+  private fromOsrmRoute(
+    route: OsrmRoute,
+    index = 0,
+    alternatives: OsrmRoute[] = [route],
+  ): RouteCandidate {
     return {
-      geometry: route.geometry.coordinates.map(([longitude, latitude]) => ({ latitude, longitude })),
+      geometry: route.geometry.coordinates.map(([longitude, latitude]) => ({
+        latitude,
+        longitude,
+      })),
       distanceMeters: route.distance,
       durationSeconds: route.duration,
       alerts: [],
       provider: 'osrm',
       legalStatus: 'allowed',
       instructions: this.getOsrmInstructions(route),
-      alternatives: alternatives.map((candidate, candidateIndex) => this.toOsrmAlternativeSummary(candidate, candidateIndex)),
+      alternatives: alternatives.map((candidate, candidateIndex) =>
+        this.toOsrmAlternativeSummary(candidate, candidateIndex),
+      ),
       selectedRouteIndex: index,
       shadeScore: 0,
       touristScore: 0,
@@ -342,7 +419,11 @@ export class NavigationService {
     };
   }
 
-  private fromTomTomRoute(route: TomTomRoute, index = 0, alternatives: TomTomRoute[] = [route]): RouteCandidate {
+  private fromTomTomRoute(
+    route: TomTomRoute,
+    index = 0,
+    alternatives: TomTomRoute[] = [route],
+  ): RouteCandidate {
     return {
       geometry: this.getTomTomGeometry(route),
       distanceMeters: route.summary.lengthInMeters,
@@ -351,7 +432,9 @@ export class NavigationService {
       provider: 'tomtom',
       legalStatus: 'allowed',
       instructions: this.getTomTomInstructions(route),
-      alternatives: alternatives.map((candidate, candidateIndex) => this.toTomTomAlternativeSummary(candidate, candidateIndex)),
+      alternatives: alternatives.map((candidate, candidateIndex) =>
+        this.toTomTomAlternativeSummary(candidate, candidateIndex),
+      ),
       selectedRouteIndex: index,
       trafficDelaySeconds: route.summary.trafficDelayInSeconds,
       shadeScore: 0,
@@ -359,7 +442,10 @@ export class NavigationService {
     };
   }
 
-  private toOsrmAlternativeSummary(route: OsrmRoute, index: number): RouteAlternativeSummary {
+  private toOsrmAlternativeSummary(
+    route: OsrmRoute,
+    index: number,
+  ): RouteAlternativeSummary {
     return {
       index,
       distanceMeters: route.distance,
@@ -369,7 +455,10 @@ export class NavigationService {
     };
   }
 
-  private toTomTomAlternativeSummary(route: TomTomRoute, index: number): RouteAlternativeSummary {
+  private toTomTomAlternativeSummary(
+    route: TomTomRoute,
+    index: number,
+  ): RouteAlternativeSummary {
     return {
       index,
       distanceMeters: route.summary.lengthInMeters,
@@ -380,37 +469,53 @@ export class NavigationService {
   }
 
   private getOsrmInstructions(route: OsrmRoute): RouteInstruction[] {
-    return route.legs?.[0]?.steps?.map((step, index) => {
-      const street = step.name?.trim() || 'Tramo sin nombre';
-      const message = [
-        step.maneuver?.type,
-        step.maneuver?.modifier,
-        step.name ? `en ${step.name}` : null,
-      ].filter(Boolean).join(' ') || 'Continuar';
-      const [longitude, latitude] = step.maneuver?.location ?? [];
+    return (
+      route.legs?.[0]?.steps?.map((step, index) => {
+        const street = step.name?.trim() || 'Tramo sin nombre';
+        const message =
+          [
+            step.maneuver?.type,
+            step.maneuver?.modifier,
+            step.name ? `en ${step.name}` : null,
+          ]
+            .filter(Boolean)
+            .join(' ') || 'Continuar';
+        const [longitude, latitude] = step.maneuver?.location ?? [];
 
-      return {
-        index: index + 1,
-        message,
-        street,
-        distanceMeters: step.distance,
-        durationSeconds: step.duration,
-        coordinate: typeof latitude === 'number' && typeof longitude === 'number'
-          ? { latitude, longitude }
-          : undefined,
-      };
-    }) ?? [];
+        return {
+          index: index + 1,
+          message,
+          street,
+          distanceMeters: step.distance,
+          durationSeconds: step.duration,
+          coordinate:
+            typeof latitude === 'number' && typeof longitude === 'number'
+              ? { latitude, longitude }
+              : undefined,
+        };
+      }) ?? []
+    );
   }
 
   private getTomTomInstructions(route: TomTomRoute): RouteInstruction[] {
-    return route.guidance?.instructions?.map((instruction, index) => ({
-      index: index + 1,
-      message: instruction.message ?? instruction.combinedMessage ?? instruction.maneuver ?? instruction.instructionType ?? 'Continuar',
-      street: instruction.street ?? instruction.roadNumbers?.join(', ') ?? 'Tramo sin nombre',
-      distanceMeters: instruction.routeOffsetInMeters,
-      durationSeconds: instruction.travelTimeInSeconds,
-      coordinate: instruction.point,
-    })) ?? [];
+    return (
+      route.guidance?.instructions?.map((instruction, index) => ({
+        index: index + 1,
+        message:
+          instruction.message ??
+          instruction.combinedMessage ??
+          instruction.maneuver ??
+          instruction.instructionType ??
+          'Continuar',
+        street:
+          instruction.street ??
+          instruction.roadNumbers?.join(', ') ??
+          'Tramo sin nombre',
+        distanceMeters: instruction.routeOffsetInMeters,
+        durationSeconds: instruction.travelTimeInSeconds,
+        coordinate: instruction.point,
+      })) ?? []
+    );
   }
 
   private getTomTomGeometry(route: TomTomRoute): RouteCoordinate[] {
@@ -418,7 +523,11 @@ export class NavigationService {
 
     return points.filter((point, index) => {
       const previous = points[index - 1];
-      return !previous || previous.latitude !== point.latitude || previous.longitude !== point.longitude;
+      return (
+        !previous ||
+        previous.latitude !== point.latitude ||
+        previous.longitude !== point.longitude
+      );
     });
   }
 
@@ -436,13 +545,19 @@ export class NavigationService {
       index = lngResult.nextIndex;
       latitude += latResult.delta;
       longitude += lngResult.delta;
-      coordinates.push({ latitude: latitude / factor, longitude: longitude / factor });
+      coordinates.push({
+        latitude: latitude / factor,
+        longitude: longitude / factor,
+      });
     }
 
     return coordinates;
   }
 
-  private decodeChunk(shape: string, startIndex: number): { delta: number; nextIndex: number } {
+  private decodeChunk(
+    shape: string,
+    startIndex: number,
+  ): { delta: number; nextIndex: number } {
     let result = 0;
     let shift = 0;
     let index = startIndex;
@@ -455,16 +570,32 @@ export class NavigationService {
       shift += 5;
     } while (byte >= 0x20);
 
-    return { delta: result & 1 ? ~(result >> 1) : result >> 1, nextIndex: index };
+    return {
+      delta: result & 1 ? ~(result >> 1) : result >> 1,
+      nextIndex: index,
+    };
   }
 
-  private async withModeScores(route: RouteCandidate, routeRequest: RouteRequestDto): Promise<RouteCandidate> {
-    const thermalComfort = routeRequest.mode === NavigationMode.PEATON && routeRequest.preferences?.prioritizeShade !== false
-      ? await this.safeGetThermalComfort(route.geometry)
-      : { scoreSeconds: 0, shadeSegments: [] };
+  private async withModeScores(
+    route: RouteCandidate,
+    routeRequest: RouteRequestDto,
+  ): Promise<RouteCandidate> {
+    const thermalComfort =
+      routeRequest.mode === NavigationMode.PEATON &&
+      routeRequest.preferences?.prioritizeShade !== false
+        ? await this.safeGetThermalComfort(route.geometry)
+        : { scoreSeconds: 0, shadeSegments: [] };
     const shadeScore = thermalComfort.scoreSeconds;
-    const touristScore = routeRequest.mode === NavigationMode.TURISTA ? await this.safeCountTouristScore(route.geometry) : 0;
-    return { ...route, shadeScore, touristScore, shadeSegments: thermalComfort.shadeSegments };
+    const touristScore =
+      routeRequest.mode === NavigationMode.TURISTA
+        ? await this.safeCountTouristScore(route.geometry)
+        : 0;
+    return {
+      ...route,
+      shadeScore,
+      touristScore,
+      shadeSegments: thermalComfort.shadeSegments,
+    };
   }
 
   private isWalkingMode(mode: NavigationMode): boolean {
@@ -472,10 +603,16 @@ export class NavigationService {
   }
 
   private shouldUseTomTomTraffic(mode: NavigationMode): boolean {
-    return !this.isWalkingMode(mode) && Boolean(this.configService.get<string>('TOMTOM_API_KEY')?.trim());
+    return (
+      !this.isWalkingMode(mode) &&
+      Boolean(this.configService.get<string>('TOMTOM_API_KEY')?.trim())
+    );
   }
 
-  private async getRiskAssessment(route: RouteCandidate, routeRequest: RouteRequestDto): Promise<RouteRiskAssessment> {
+  private async getRiskAssessment(
+    route: RouteCandidate,
+    routeRequest: RouteRequestDto,
+  ): Promise<RouteRiskAssessment> {
     try {
       const [zones, streams] = await Promise.all([
         this.findIntersectingZones(route.geometry),
@@ -483,40 +620,67 @@ export class NavigationService {
       ]);
       const zoneAlerts = await this.getZoneAlerts(zones, routeRequest);
       const streamAlerts = streams.map((stream) => this.toStreamAlert(stream));
-      return this.toRiskAssessment([...zoneAlerts, ...streamAlerts], zoneAlerts);
+      return this.toRiskAssessment(
+        [...zoneAlerts, ...streamAlerts],
+        zoneAlerts,
+      );
     } catch {
       return this.toRiskAssessment([this.toRiskValidationAlert()], []);
     }
   }
 
-  private toRiskAssessment(alerts: RouteAlert[], legalAlerts: RouteAlert[]): RouteRiskAssessment {
+  private toRiskAssessment(
+    alerts: RouteAlert[],
+    legalAlerts: RouteAlert[],
+  ): RouteRiskAssessment {
     return {
       alerts,
       hasRisk: alerts.length > 0,
-      isLegalBlocked: legalAlerts.some((alert) => alert.type === 'pico_y_placa' || alert.type === 'restriccion_parrillero'),
+      isLegalBlocked: legalAlerts.some(
+        (alert) =>
+          alert.type === 'pico_y_placa' ||
+          alert.type === 'restriccion_parrillero',
+      ),
     };
   }
 
-  private async findIntersectingZones(geometry: RouteCoordinate[]): Promise<Zone[]> {
+  private async findIntersectingZones(
+    geometry: RouteCoordinate[],
+  ): Promise<Zone[]> {
     return this.zoneRepository.query(
       `select * from zones where active = true and ST_Intersects(boundary, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))`,
       [JSON.stringify(this.toLineString(geometry))],
     );
   }
 
-  private async findActiveStreams(geometry: RouteCoordinate[]): Promise<StreamRiskRow[]> {
+  private async findActiveStreams(
+    geometry: RouteCoordinate[],
+  ): Promise<StreamRiskRow[]> {
     return this.reportRepository.query(
       `select id, description from report where type = $1 and status = $2 and ST_DWithin(location, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326)::geography, $4)`,
-      [ReportType.ARROYO, ReportStatus.ACTIVO, JSON.stringify(this.toLineString(geometry)), ACTIVE_STREAM_BUFFER_METERS],
+      [
+        ReportType.ARROYO,
+        ReportStatus.ACTIVO,
+        JSON.stringify(this.toLineString(geometry)),
+        ACTIVE_STREAM_BUFFER_METERS,
+      ],
     );
   }
 
-  private async getZoneAlerts(zones: Zone[], routeRequest: RouteRequestDto): Promise<RouteAlert[]> {
-    const alerts = await Promise.all(zones.map((zone) => this.toZoneAlert(zone, routeRequest)));
+  private async getZoneAlerts(
+    zones: Zone[],
+    routeRequest: RouteRequestDto,
+  ): Promise<RouteAlert[]> {
+    const alerts = await Promise.all(
+      zones.map((zone) => this.toZoneAlert(zone, routeRequest)),
+    );
     return alerts.filter((alert): alert is RouteAlert => alert !== null);
   }
 
-  private async toZoneAlert(zone: Zone, routeRequest: RouteRequestDto): Promise<RouteAlert | null> {
+  private async toZoneAlert(
+    zone: Zone,
+    routeRequest: RouteRequestDto,
+  ): Promise<RouteAlert | null> {
     const vehicleType = this.toVehicleType(routeRequest.mode);
     const restricted = await this.zonesService.isRestricted(zone.id, {
       type: vehicleType,
@@ -531,7 +695,10 @@ export class NavigationService {
   private toLegalAlert(zone: Zone, reason: RestrictionType | null): RouteAlert {
     return {
       id: zone.id,
-      type: reason === RestrictionType.PARRILLERO_HOMBRE ? 'restriccion_parrillero' : 'pico_y_placa',
+      type:
+        reason === RestrictionType.PARRILLERO_HOMBRE
+          ? 'restriccion_parrillero'
+          : 'pico_y_placa',
       severity: 'danger',
       title: `Restriccion legal activa: ${zone.name}`,
       description: reason ?? undefined,
@@ -556,7 +723,8 @@ export class NavigationService {
       type: 'zona_restringida',
       severity: 'warning',
       title: 'Ruta calculada sin validacion completa de riesgos',
-      description: 'No fue posible consultar zonas o reportes activos durante el calculo.',
+      description:
+        'No fue posible consultar zonas o reportes activos durante el calculo.',
     };
   }
 
@@ -566,70 +734,11 @@ export class NavigationService {
     return VehicleType.PEATON;
   }
 
-  private async getThermalComfort(geometry: RouteCoordinate[]): Promise<ThermalComfortAssessment> {
-    const rows = await this.reportRepository.query(
-      `
-      with route as (
-        select ST_SetSRID(ST_GeomFromGeoJSON($3), 4326) as geom
-      ),
-      route_segments as (
-        select dumped.path[1] as segment_index, dumped.geom as geom
-        from route
-        cross join lateral ST_DumpSegments(route.geom) as dumped(path, geom)
-      ),
-      community_segments as (
-        select distinct
-          concat('shade-report-', report.id::text, '-', route_segments.segment_index::text) as id,
-          'community_report' as source,
-          route_segments.geom
-        from route_segments
-        join report
-          on report.type = $1
-          and report.status = $2
-          and ST_DWithin(report.location, route_segments.geom::geography, $4)
-      ),
-      park_segments as (
-        select distinct
-          concat('green-coverage-', coverage.id::text, '-', route_segments.segment_index::text) as id,
-          case when coverage.type = 'park' then 'park' else 'green_coverage' end as source,
-          route_segments.geom
-        from route_segments
-        join amb_green_coverage coverage
-          on coverage.type in ('tree', 'park', 'grass')
-          and ST_DWithin(
-            coverage.geometry,
-            route_segments.geom::geography,
-            $5
-          )
-      ),
-      matched_segments as (
-        select * from community_segments
-        union all
-        select * from park_segments
-      )
-      select
-        (select count(distinct id)::int from community_segments) as matched_shade_reports,
-        (select count(distinct id)::int from park_segments) as matched_parks,
-        case
-          when count(*) = 0 then -$8::int
-          else
-            (select count(distinct id)::int from community_segments) * $6::int +
-            (select count(distinct id)::int from park_segments) * $7::int
-        end as shade_score_seconds,
-        case when count(*) = 0 then $8::int else 0 end as heat_penalty_seconds,
-        coalesce(
-          json_agg(
-            json_build_object(
-              'id', id,
-              'source', source,
-              'geometry', ST_AsGeoJSON(geom)::json
-            )
-            order by id
-          ) filter (where id is not null),
-          '[]'::json
-        ) as shade_segments
-      from matched_segments
-      `,
+  private async getThermalComfort(
+    geometry: RouteCoordinate[],
+  ): Promise<ThermalComfortAssessment> {
+    const rawRows: unknown = await this.reportRepository.query(
+      THERMAL_COMFORT_QUERY,
       [
         ReportType.SOMBRA,
         ReportStatus.ACTIVO,
@@ -640,17 +749,25 @@ export class NavigationService {
         PARK_SEGMENT_REWARD_SECONDS,
         UNSHADED_WALK_PENALTY_SECONDS,
       ],
-    ) as ThermalComfortRow[];
+    );
+    const rows = rawRows as ThermalComfortRow[];
     const row = rows[0];
-    const scoreSeconds = this.toNumber(row?.shade_score_seconds ?? row?.shadeScoreSeconds, -UNSHADED_WALK_PENALTY_SECONDS);
+    const scoreSeconds = this.toNumber(
+      row?.shade_score_seconds ?? row?.shadeScoreSeconds,
+      -UNSHADED_WALK_PENALTY_SECONDS,
+    );
 
     return {
       scoreSeconds,
-      shadeSegments: this.toShadeSegments(row?.shade_segments ?? row?.shadeSegments),
+      shadeSegments: this.toShadeSegments(
+        row?.shade_segments ?? row?.shadeSegments,
+      ),
     };
   }
 
-  private async safeGetThermalComfort(geometry: RouteCoordinate[]): Promise<ThermalComfortAssessment> {
+  private async safeGetThermalComfort(
+    geometry: RouteCoordinate[],
+  ): Promise<ThermalComfortAssessment> {
     try {
       return await this.getThermalComfort(geometry);
     } catch {
@@ -658,15 +775,20 @@ export class NavigationService {
     }
   }
 
-  private async countTouristScore(geometry: RouteCoordinate[]): Promise<number> {
-    const rows = await this.zoneRepository.query(
+  private async countTouristScore(
+    geometry: RouteCoordinate[],
+  ): Promise<number> {
+    const rawRows: unknown = await this.zoneRepository.query(
       `select case when to_regclass('tourist_sites') is null then 0 else (select count(*)::int from tourist_sites where ST_DWithin(location, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography, 80)) end as total`,
       [JSON.stringify(this.toLineString(geometry))],
-    ) as Array<{ total: number }>;
+    );
+    const rows = rawRows as Array<{ total: number }>;
     return (rows[0]?.total ?? 0) * 120;
   }
 
-  private async safeCountTouristScore(geometry: RouteCoordinate[]): Promise<number> {
+  private async safeCountTouristScore(
+    geometry: RouteCoordinate[],
+  ): Promise<number> {
     try {
       return await this.countTouristScore(geometry);
     } catch {
@@ -682,27 +804,37 @@ export class NavigationService {
   }
 
   private assertRequestWithinAmb(routeRequest: RouteRequestDto): void {
-    if (this.isWithinAmbBounds(routeRequest.origin) && this.isWithinAmbBounds(routeRequest.destination)) {
+    if (
+      this.isWithinAmbBounds(routeRequest.origin) &&
+      this.isWithinAmbBounds(routeRequest.destination)
+    ) {
       return;
     }
 
-    throw new BadRequestException('El algoritmo peatonal de confort termico solo opera dentro del AMB.');
+    throw new BadRequestException(
+      'El algoritmo peatonal de confort termico solo opera dentro del AMB.',
+    );
   }
 
   private isWithinAmbBounds(coordinate: RouteCoordinate): boolean {
-    return coordinate.latitude >= AMB_BOUNDS.minLatitude &&
+    return (
+      coordinate.latitude >= AMB_BOUNDS.minLatitude &&
       coordinate.latitude <= AMB_BOUNDS.maxLatitude &&
       coordinate.longitude >= AMB_BOUNDS.minLongitude &&
-      coordinate.longitude <= AMB_BOUNDS.maxLongitude;
+      coordinate.longitude <= AMB_BOUNDS.maxLongitude
+    );
   }
 
   private toNumber(value: unknown, fallback = 0): number {
     const numeric = typeof value === 'string' ? Number(value) : value;
-    return typeof numeric === 'number' && Number.isFinite(numeric) ? numeric : fallback;
+    return typeof numeric === 'number' && Number.isFinite(numeric)
+      ? numeric
+      : fallback;
   }
 
   private toShadeSegments(value: unknown): RouteShadeSegment[] {
-    const rawSegments = typeof value === 'string' ? JSON.parse(value) as unknown : value;
+    const rawSegments =
+      typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
 
     if (!Array.isArray(rawSegments)) {
       return [];
@@ -720,29 +852,29 @@ export class NavigationService {
 
       if (
         typeof candidate.id !== 'string' ||
-        (
-          candidate.source !== 'community_report' &&
+        (candidate.source !== 'community_report' &&
           candidate.source !== 'green_coverage' &&
-          candidate.source !== 'park'
-        ) ||
+          candidate.source !== 'park') ||
         candidate.geometry?.type !== 'LineString' ||
         !Array.isArray(candidate.geometry.coordinates)
       ) {
         return [];
       }
 
-      const geometry = candidate.geometry.coordinates.flatMap((coordinate): RouteCoordinate[] => {
-        if (
-          !Array.isArray(coordinate) ||
-          coordinate.length < 2 ||
-          !Number.isFinite(coordinate[0]) ||
-          !Number.isFinite(coordinate[1])
-        ) {
-          return [];
-        }
+      const geometry = candidate.geometry.coordinates.flatMap(
+        (coordinate): RouteCoordinate[] => {
+          if (
+            !Array.isArray(coordinate) ||
+            coordinate.length < 2 ||
+            !Number.isFinite(coordinate[0]) ||
+            !Number.isFinite(coordinate[1])
+          ) {
+            return [];
+          }
 
-        return [{ longitude: coordinate[0], latitude: coordinate[1] }];
-      });
+          return [{ longitude: coordinate[0], latitude: coordinate[1] }];
+        },
+      );
 
       return geometry.length > 1
         ? [{ id: candidate.id, source: candidate.source, geometry }]
