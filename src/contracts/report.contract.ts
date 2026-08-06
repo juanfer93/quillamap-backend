@@ -6,7 +6,9 @@ export interface CreateReportContract {
   type: ReportType;
   description: string;
   location: Point;
+  userLocation?: Point;
   imageUrl?: string | null;
+  dangerLevel?: number;
 }
 
 export interface ReportContract {
@@ -16,6 +18,10 @@ export interface ReportContract {
   location: Point;
   status: ReportStatus;
   createdAt: Date;
+  expiresAt: Date | null;
   profileId: string;
   imageUrl: string | null;
+  dangerLevel: number;
+  intensity: number | null;
+  veracityScore: number | null;
 }

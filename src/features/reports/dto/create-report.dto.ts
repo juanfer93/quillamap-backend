@@ -6,9 +6,12 @@ import {
   IsArray,
   IsEnum,
   IsNumber,
+  IsInt,
   IsOptional,
   IsString,
   IsUrl,
+  Max,
+  Min,
   Validate,
   ValidateNested,
 } from 'class-validator';
@@ -42,7 +45,7 @@ class IsLngLatCoordinate {
   }
 }
 
-class GeoJsonPointDto implements Point {
+export class GeoJsonPointDto implements Point {
   @ApiProperty({ example: 'Point' })
   @Equals('Point')
   type: 'Point';
@@ -84,6 +87,19 @@ export class CreateReportDto implements CreateReportContract {
   @IsUrl({ protocols: ['http', 'https'] })
   imageUrl?: string | null;
 
+  @ApiPropertyOptional({
+    description: 'Civil danger level from 1 (low) to 5 (critical)',
+    example: 4,
+    minimum: 1,
+    maximum: 5,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  @Type(() => Number)
+  dangerLevel?: number;
+
   @ApiProperty({
     description: 'GeoJSON Point for the report location',
     example: { type: 'Point', coordinates: [-74.79, 10.99] },
@@ -92,4 +108,14 @@ export class CreateReportDto implements CreateReportContract {
   @ValidateNested()
   @Type(() => GeoJsonPointDto)
   location: Point;
+
+  @ApiPropertyOptional({
+    description: 'Current device location for 500m anti-spoofing checks',
+    example: { type: 'Point', coordinates: [-74.79, 10.99] },
+    type: Object,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GeoJsonPointDto)
+  userLocation?: Point;
 }

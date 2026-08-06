@@ -48,6 +48,7 @@ describe('ReportsService', () => {
     createQueryBuilder: jest.fn(),
     findOneOrFail: jest.fn(),
     findOne: jest.fn(),
+    query: jest.fn(),
   };
 
   const mockReportValidationRepository = {
@@ -88,6 +89,7 @@ describe('ReportsService', () => {
     }).compile();
 
     service = module.get<ReportsService>(ReportsService);
+    mockReportRepository.query.mockResolvedValue([{ isAllowed: true }]);
   });
 
   afterEach(() => {
@@ -126,6 +128,10 @@ describe('ReportsService', () => {
 
       const result = await service.createReport(createReportDto, profileId);
 
+      expect(mockReportRepository.query).toHaveBeenCalledWith(
+        expect.stringContaining('ST_DWithin'),
+        [-74.08175, 4.60971, -74.08175, 4.60971, 500],
+      );
       expect(mockReportRepository.create).toHaveBeenCalledWith({
         ...createReportDto,
         profileId,
@@ -136,6 +142,65 @@ describe('ReportsService', () => {
         TRUTHFUL_REPORT_KARMA_POINTS,
       );
       expect(result).toEqual(report);
+    });
+
+    it('should reject spoofed reports outside the 500m presence radius', async () => {
+      mockReportRepository.query.mockResolvedValue([{ isAllowed: false }]);
+
+      await expect(
+        service.createReport(
+          {
+            type: ReportType.BACHE,
+            description: 'Reporte lejos de la ubicacion real',
+            location: { type: 'Point', coordinates: [-74.79, 10.99] },
+            userLocation: { type: 'Point', coordinates: [-74.1, 10.1] },
+          },
+          'user-123',
+        ),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Report location is outside the 500m presence radius.',
+        ),
+      );
+      expect(mockReportRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should persist an "inseguridad" report with type "inseguridad" (never converted to "sombra")', async () => {
+      const report = {
+        id: 'danger-zone-1',
+        type: ReportType.INSEGURIDAD,
+        description: 'Zona peligrosa reportada por la comunidad',
+        location: { type: 'Point', coordinates: [-74.789, 10.987] },
+        profileId: 'user-123',
+        status: ReportStatus.ACTIVO,
+        imageUrl: null,
+        createdAt: new Date(),
+      } as unknown as Report;
+
+      mockReportRepository.create.mockImplementation(
+        (data: Partial<Report>) => ({ ...data, id: 'danger-zone-1' }),
+      );
+      mockReportRepository.save.mockResolvedValue(report);
+
+      const result = await service.createReport(
+        {
+          type: ReportType.INSEGURIDAD,
+          description: 'Zona peligrosa reportada por la comunidad',
+          location: { type: 'Point', coordinates: [-74.789, 10.987] },
+        },
+        'user-123',
+      );
+
+      expect(mockReportRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'inseguridad',
+          description: 'Zona peligrosa reportada por la comunidad',
+        }),
+      );
+      expect(mockReportRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'inseguridad' }),
+      );
+      expect(result.type).toBe(ReportType.INSEGURIDAD);
     });
   });
 
@@ -192,6 +257,28 @@ describe('ReportsService', () => {
       ).rejects.toThrow(
         new ForbiddenException('Users cannot validate their own reports.'),
       );
+    });
+
+    it('should validate through the 500m presence radius before saving', async () => {
+      const report = {
+        id: 'report-123',
+        profileId: 'owner-123',
+      } as Report;
+
+      mockReportRepository.findOneOrFail.mockResolvedValue(report);
+      mockReportValidationRepository.create.mockReturnValue({ id: 'v-1' });
+      mockReportValidationRepository.save.mockResolvedValue({ id: 'v-1' });
+
+      await service.validateReport(report.id, 'validator-123', true, {
+        type: 'Point',
+        coordinates: [-74.789, 10.987],
+      });
+
+      expect(mockReportRepository.query).toHaveBeenCalledWith(
+        expect.stringContaining('ST_DWithin'),
+        [-74.789, 10.987, 500, report.id],
+      );
+      expect(mockReportValidationRepository.save).toHaveBeenCalled();
     });
   });
 

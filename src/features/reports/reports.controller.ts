@@ -23,6 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { Report } from '@/features/reports/entities/report.entity';
 import { CreateReportDto } from '@/features/reports/dto/create-report.dto';
+import { ValidateReportDto } from '@/features/reports/dto/validate-report.dto';
 import { JwtAuthGuard } from '@/features/auth/guards/jwt-auth.guard';
 import { MAX_EVIDENCE_IMAGE_SIZE_BYTES } from '@/features/evidence/evidence.constants';
 
@@ -53,6 +54,23 @@ export class ReportsController {
     return this.reportsService.createReport(
       createReportDto,
       request.user.userId,
+    );
+  }
+
+  @Post(':id/validations')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Validate a report with proximity protection' })
+  @ApiResponse({ status: 201, description: 'Stores a report validation.' })
+  validateReport(
+    @Param('id') reportId: string,
+    @Body() validateReportDto: ValidateReportDto,
+    @Req() request: { user: { userId: string } },
+  ) {
+    return this.reportsService.validateReport(
+      reportId,
+      request.user.userId,
+      validateReportDto.isConfirmed,
+      validateReportDto.userLocation,
     );
   }
 

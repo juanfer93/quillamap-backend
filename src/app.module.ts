@@ -10,6 +10,7 @@ import { PlacesModule } from '@/features/places/places.module';
 import { NavigationModule } from '@/features/navigation/navigation.module';
 import { TransitModule } from '@/features/transit/transit.module';
 import { ThermalComfortModule } from '@/features/thermal-comfort/thermal-comfort.module';
+import { SecurityModule } from '@/features/security/security.module';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { ThermalComfortModule } from '@/features/thermal-comfort/thermal-comfort
         type: 'postgres',
         url: configService.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: true, // TODO: Disable in production
+        synchronize: true,
         ssl: true,
         extra: {
           ssl: {
@@ -40,7 +41,8 @@ import { ThermalComfortModule } from '@/features/thermal-comfort/thermal-comfort
     PlacesModule,
     NavigationModule,
     TransitModule,
-    ThermalComfortModule
+    ThermalComfortModule,
+    SecurityModule,
   ],
 })
 export class AppModule {}

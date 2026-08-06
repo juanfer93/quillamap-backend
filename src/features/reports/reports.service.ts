@@ -14,6 +14,8 @@ import { ReportValidation } from '@/features/reports/entities/report-validation.
 import { ReportStatus } from '@/features/reports/entities/report-status.enum';
 import { SupabaseStorageService } from '@/features/evidence/supabase-storage.service';
 import { ALLOWED_EVIDENCE_MIME_TYPES } from '@/features/evidence/evidence.constants';
+import { SECURITY_HEATMAP_PRESENCE_RADIUS_METERS } from '@/features/security/security-heatmap.constants';
+import type { Point } from 'geojson';
 
 export const TRUTHFUL_REPORT_KARMA_POINTS = 6;
 
@@ -32,8 +34,14 @@ export class ReportsService {
     createReportDto: CreateReportDto,
     profileId: string,
   ): Promise<Report> {
+    await this.assertWithinPresenceRadius(
+      createReportDto.location,
+      createReportDto.userLocation ?? createReportDto.location,
+    );
+
+    const { userLocation: _userLocation, ...reportData } = createReportDto;
     const newReport = this.reportRepository.create({
-      ...createReportDto,
+      ...reportData,
       profileId,
     });
 
@@ -68,6 +76,7 @@ export class ReportsService {
     reportId: string,
     profileId: string,
     isConfirmed: boolean,
+    userLocation?: Point,
   ): Promise<void> {
     const report = await this.reportRepository.findOneOrFail({
       where: { id: reportId },
@@ -75,6 +84,10 @@ export class ReportsService {
 
     if (report.profileId === profileId) {
       throw new ForbiddenException('Users cannot validate their own reports.');
+    }
+
+    if (userLocation) {
+      await this.assertReportWithinPresence(reportId, userLocation);
     }
 
     const validation = this.reportValidationRepository.create({
@@ -144,5 +157,68 @@ export class ReportsService {
         `Invalid image type "${file.mimetype}". Allowed types: ${ALLOWED_EVIDENCE_MIME_TYPES.join(', ')}`,
       );
     }
+  }
+
+  private async assertWithinPresenceRadius(
+    target: Point,
+    userLocation: Point,
+  ): Promise<void> {
+    const isAllowed = await this.isPointWithinPresenceRadius(target, userLocation);
+
+    if (!isAllowed) {
+      throw new BadRequestException(
+        'Report location is outside the 500m presence radius.',
+      );
+    }
+  }
+
+  private async assertReportWithinPresence(
+    reportId: string,
+    userLocation: Point,
+  ): Promise<void> {
+    const isAllowed = await this.isReportWithinPresenceRadius(reportId, userLocation);
+
+    if (!isAllowed) {
+      throw new BadRequestException(
+        'Validation is outside the 500m presence radius.',
+      );
+    }
+  }
+
+  private async isPointWithinPresenceRadius(
+    target: Point,
+    userLocation: Point,
+  ): Promise<boolean> {
+    const [targetLng, targetLat] = target.coordinates;
+    const [userLng, userLat] = userLocation.coordinates;
+    const [row] = await this.reportRepository.query(
+      `select ST_DWithin(
+        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+        ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
+        $5
+      ) as "isAllowed"`,
+      [targetLng, targetLat, userLng, userLat, SECURITY_HEATMAP_PRESENCE_RADIUS_METERS],
+    );
+
+    return Boolean(row?.isAllowed);
+  }
+
+  private async isReportWithinPresenceRadius(
+    reportId: string,
+    userLocation: Point,
+  ): Promise<boolean> {
+    const [userLng, userLat] = userLocation.coordinates;
+    const [row] = await this.reportRepository.query(
+      `select ST_DWithin(
+        r.location,
+        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+        $3
+      ) as "isAllowed"
+      from report r
+      where r.id = $4`,
+      [userLng, userLat, SECURITY_HEATMAP_PRESENCE_RADIUS_METERS, reportId],
+    );
+
+    return Boolean(row?.isAllowed);
   }
 }

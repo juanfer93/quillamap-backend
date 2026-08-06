@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
+  Index,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -43,6 +44,7 @@ export class Report implements ReportContract {
   description: string;
 
   @ApiProperty({ description: 'GeoJSON Point for the report location' })
+  @Index({ spatial: true })
   @Column({
     type: 'geography',
     spatialFeatureType: 'Point',
@@ -60,6 +62,33 @@ export class Report implements ReportContract {
   imageUrl: string | null;
 
   @ApiProperty({
+    description: 'Civil danger level from 1 (low) to 5 (critical)',
+    example: 4,
+    minimum: 1,
+    maximum: 5,
+  })
+  @Column({ name: 'danger_level', type: 'smallint', default: 1 })
+  dangerLevel: number;
+
+  @ApiProperty({
+    description: 'Last calculated heatmap intensity for this report',
+    example: 0.72,
+    required: false,
+    nullable: true,
+  })
+  @Column({ name: 'intensity', type: 'double precision', nullable: true })
+  intensity: number | null;
+
+  @ApiProperty({
+    description: 'Last calculated veracity score for this report',
+    example: 0.91,
+    required: false,
+    nullable: true,
+  })
+  @Column({ name: 'veracity_score', type: 'double precision', nullable: true })
+  veracityScore: number | null;
+
+  @ApiProperty({
     description: 'Status of the report',
     enum: ReportStatus,
     example: ReportStatus.ACTIVO,
@@ -74,6 +103,14 @@ export class Report implements ReportContract {
   @ApiProperty({ description: 'Timestamp of when the report was created' })
   @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;
+
+  @ApiProperty({
+    description: 'Timestamp after which the report is no longer active',
+    required: false,
+    nullable: true,
+  })
+  @Column({ name: 'expires_at', type: 'timestamp', nullable: true })
+  expiresAt: Date | null;
 
   @ManyToOne(() => Profile, (profile) => profile.reports)
   @JoinColumn({ name: 'profileId' })
